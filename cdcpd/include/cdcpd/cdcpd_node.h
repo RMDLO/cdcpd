@@ -48,6 +48,8 @@ struct CDCPD_Publishers
     ros::Publisher order_pub;
     ros::Publisher contact_marker_pub;
     ros::Publisher bbox_pub;
+
+    ros::Publisher mask_pub;
 };
 
 struct CDCPD_Node_Parameters

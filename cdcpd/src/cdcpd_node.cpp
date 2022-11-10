@@ -1,4 +1,6 @@
 #include "cdcpd/cdcpd_node.h"
+#include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
 
 std::string const LOGNAME = "cdcpd_node";
 constexpr auto const MAX_CONTACTS_VIZ = 25;
@@ -17,12 +19,12 @@ Eigen::Vector3f extent_to_center(Eigen::Vector3f const& bbox_lower,
 };
 
 cv::Mat getHsvMask(ros::NodeHandle const& ph, cv::Mat const& rgb) {
-    auto const hue_min = ROSHelpers::GetParamDebugLog<double>(ph, "hue_min", 340.0);
-    auto const sat_min = ROSHelpers::GetParamDebugLog<double>(ph, "saturation_min", 0.3);
-    auto const val_min = ROSHelpers::GetParamDebugLog<double>(ph, "value_min", 0.4);
-    auto const hue_max = ROSHelpers::GetParamDebugLog<double>(ph, "hue_max", 20.0);
-    auto const sat_max = ROSHelpers::GetParamDebugLog<double>(ph, "saturation_max", 1.0);
-    auto const val_max = ROSHelpers::GetParamDebugLog<double>(ph, "value_max", 1.0);
+    auto const hue_min = ROSHelpers::GetParamDebugLog<double>(ph, "hue_min", 127.058823529 ); // 340
+    auto const sat_min = ROSHelpers::GetParamDebugLog<double>(ph, "saturation_min", 0.39215686274); // 0.3
+    auto const val_min = ROSHelpers::GetParamDebugLog<double>(ph, "value_min", 0.39215686274); // 0.4
+    auto const hue_max = ROSHelpers::GetParamDebugLog<double>(ph, "hue_max", 169.411764706 ); // 20
+    auto const sat_max = ROSHelpers::GetParamDebugLog<double>(ph, "saturation_max", 1.0); // 1.0
+    auto const val_max = ROSHelpers::GetParamDebugLog<double>(ph, "value_max", 1.0); //1.0
 
     cv::Mat rgb_f;
     rgb.convertTo(rgb_f, CV_32FC3);
@@ -42,6 +44,12 @@ cv::Mat getHsvMask(ros::NodeHandle const& ph, cv::Mat const& rgb) {
     cv::inRange(color_hsv, cv::Scalar(hue_min, sat_min, val_min), cv::Scalar(hue_max2, sat_max, val_max), mask1);
     cv::inRange(color_hsv, cv::Scalar(hue_min1, sat_min, val_min), cv::Scalar(hue_max, sat_max, val_max), mask2);
     bitwise_or(mask1, mask2, hsv_mask);
+
+    // cv::Mat converted_hsv_mask;
+    // cvtColor(hsv_mask, converted_hsv_mask, CV_GRAY2RGB);
+    // sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", converted_hsv_mask).toImageMsg();
+    // publishers.mask_pub.publish(msg);
+    std::cout << "published mask" << std::endl;
 
     return hsv_mask;
 }
@@ -66,6 +74,9 @@ CDCPD_Publishers::CDCPD_Publishers(ros::NodeHandle& nh, ros::NodeHandle& ph)
     order_pub = nh.advertise<vm::Marker>("cdcpd/order", 10);
     contact_marker_pub = ph.advertise<vm::MarkerArray>("contacts", 10);
     bbox_pub = ph.advertise<jsk_recognition_msgs::BoundingBox>("bbox", 10);
+
+    image_transport::ImageTransport it(ph);
+    image_transport::Publisher mask_pub = it.advertise("cdcpd/mask", 10);
 }
 
 

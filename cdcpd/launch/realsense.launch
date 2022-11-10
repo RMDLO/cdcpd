@@ -1,6 +1,6 @@
 <launch>
-    <param name="rope_num_points" value="25"/>
-    <param name="max_rope_length" value="0.8"/>
+    <param name="rope_num_points" value="30"/>
+    <param name="max_rope_length" value="0.6731"/>
 
     <node pkg="cdcpd" type="cdcpd_node" name="cdcpd_node" respawn="false" output="screen">
         <param name="points" value="/camera/depth/color/points"/>
