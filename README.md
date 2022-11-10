@@ -32,8 +32,8 @@ The master branch is the version the users outside the lab should use.
 
 ## Requirements
   * Environment:
-    * Ubuntu 18 or 20 (20 is strongly preferred)
-    * ROS Melodic or Noetic (Noetic strongly preferred)
+    * Ubuntu 20 (20 is strongly preferred)
+    * ROS Noetic (Noetic strongly preferred)
   * apt dependencies
     * [Eigen](http://eigen.tuxfamily.org/dox/GettingStarted.html)
     * [CGAL-5.0.3](https://github.com/CGAL/cgal/releases/tag/releases%2FCGAL-5.0.3)
