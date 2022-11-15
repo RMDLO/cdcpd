@@ -1,9 +1,15 @@
 #include "cdcpd/segmenter.h"
 
 SegmenterHSV::SegmenterParameters::SegmenterParameters(ros::NodeHandle& ph)
+<<<<<<< HEAD
     : hue_min(ROSHelpers::GetParamDebugLog<float>(ph, "hue_min", 180)),
       hue_max(ROSHelpers::GetParamDebugLog<float>(ph, "hue_max", 270)),
       sat_min(ROSHelpers::GetParamDebugLog<float>(ph, "saturation_min", 0.39215686274)),
+=======
+    : hue_min(ROSHelpers::GetParamDebugLog<float>(ph, "hue_min", 180.0)),
+      hue_max(ROSHelpers::GetParamDebugLog<float>(ph, "hue_max", 270.0)),
+      sat_min(ROSHelpers::GetParamDebugLog<float>(ph, "saturation_min", 0.3)),
+>>>>>>> tmp
       sat_max(ROSHelpers::GetParamDebugLog<float>(ph, "saturation_max", 1.0)),
       val_min(ROSHelpers::GetParamDebugLog<float>(ph, "value_min", 0.39215686274)),
       val_max(ROSHelpers::GetParamDebugLog<float>(ph, "value_max", 1.0))

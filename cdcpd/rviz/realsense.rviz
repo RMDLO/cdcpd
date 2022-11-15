@@ -32,7 +32,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: output
+    SyncSource: ""
   - Class: merrrt_visualization/AnimationController
     Name: AnimationController
     auto_play: true
@@ -134,7 +134,7 @@ Visualization Manager:
           Marker Topic: /cdcpd/order
           Name: output
           Namespaces:
-            line_order: true
+            {}
           Queue Size: 100
           Value: true
         - Alpha: 1
@@ -185,7 +185,7 @@ Visualization Manager:
           Position Transformer: XYZ
           Queue Size: 10
           Selectable: true
-          Size (Pixels): 2
+          Size (Pixels): 1
           Size (m): 0.004999999888241291
           Style: Points
           Topic: /cdcpd/original
@@ -253,7 +253,7 @@ Visualization Manager:
   Global Options:
     Background Color: 59; 59; 59
     Default Light: true
-    Fixed Frame: camera_link
+    Fixed Frame: camera_color_optical_frame
     Frame Rate: 30
   Name: root
   Tools:
@@ -277,7 +277,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 0.4068496823310852
+      Distance: 0.5958476662635803
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -285,17 +285,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 0.630964994430542
-        Y: 0.05675986036658287
-        Z: -0.09521801769733429
+        X: 0.09733635932207108
+        Y: -0.00436465535312891
+        Z: 0.734104335308075
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: -0.33479684591293335
+      Pitch: -1.4447964429855347
       Target Frame: anim_camera
-      Yaw: 3.008716344833374
+      Yaw: 4.753720760345459
     Saved: ~
 Window Geometry:
   AnimationController:
