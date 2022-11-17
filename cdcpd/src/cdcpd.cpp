@@ -620,7 +620,7 @@ CDCPD::Output CDCPD::operator()(const PointCloudRGB::Ptr &points, const PointClo
   ROS_DEBUG_STREAM_THROTTLE_NAMED(1, LOGNAME + ".points", "Points in cloud before leaf: "
       << cloud->width);
   sor.setInputCloud(cloud);
-  sor.setLeafSize(0.002f, 0.002f, 0.002f);
+  sor.setLeafSize(0.004f, 0.004f, 0.004f);
   sor.filter(*cloud_downsampled);
   ROS_INFO_STREAM_THROTTLE_NAMED(1, LOGNAME + ".points",
                                  "Points in filtered point cloud: " << cloud_downsampled->width);
@@ -728,7 +728,7 @@ CDCPD::Output CDCPD::operator()(const Mat &rgb, const Mat &depth, const Mat &mas
   pcl::VoxelGrid<pcl::PointXYZ> sor;
   ROS_DEBUG_STREAM_THROTTLE_NAMED(1, LOGNAME + ".points", "Points in cloud before leaf: " << cloud->width);
   sor.setInputCloud(cloud);
-  sor.setLeafSize(0.002f, 0.002f, 0.002f);
+  sor.setLeafSize(0.004f, 0.004f, 0.004f);
   sor.filter(*cloud_downsampled);
   ROS_INFO_STREAM_THROTTLE_NAMED(1, LOGNAME + ".points",
                                  "Points in filtered point cloud: " << cloud_downsampled->width);

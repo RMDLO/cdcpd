@@ -158,8 +158,8 @@ CDCPD_Moveit_Node::CDCPD_Moveit_Node(std::string const& robot_namespace)
         end_position = start_position;
         end_position[1] += node_params.max_rope_length;
     } else if (gripper_count == 0u) {
-        start_position << -node_params.max_rope_length / 2, 0, 1.0;
-        end_position << node_params.max_rope_length / 2, 0, 1.0;
+        start_position << -node_params.max_rope_length / 2, 0, 0.8;
+        end_position << node_params.max_rope_length / 2, 0, 0.8;
     }
 
     initialize_deformable_object_configuration(start_position, end_position);
