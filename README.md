@@ -1,231 +1,115 @@
-# Constrained Deformable Coherent Point Drift (CDCPD & CDCPD2)  <!-- omit in toc -->
+Constrained Deformable Coherent Point Drift (CDCPD)
+=============
 
-CDCPD2 is an implementation of *Tracking Partially-Occluded Deformable Objects while Enforcing Geometric Constraints*
-by Yixuan Wang, Dale McConachie and Dmitry Berenson.
+CDCPD is a implementation of *Occlusion-robust Deformable Object Tracking without Physics Simulation*
+by Cheng Chi and Dmitry Berenson.
 
-The master branch is the version the users outside the lab should use.
+This library includes object-oriented API for tracker, visualization utilities and a ROS node that subscribes 
+and publishes PointCloud2.
 
-## Table of Contents <!-- omit in toc -->
+Requirements
+------------
+  * Numpy
+  * Scipy
+  * Numexpr
+  * scikit-learn
+  * OpenCV
+  * [Gurobi](https://www.gurobi.com/)
+  * matplotlib\*
+  * [glplotlib](https://github.com/cheng-chi/glplotlib)\*
+  * rospy\**
+  * ros_numpy\**
+  
+\*: (optional) for visualization only
 
-- [Requirements](#requirements)
-- [Installation](#installation)
-  - [Installing ROS (ignore it if you already have it)](#installing-ros-ignore-it-if-you-already-have-it)
-  - [Installing Dependencies](#installing-dependencies)
-  - [Create catkin workspace](#create-catkin-workspace)
-  - [Gurobi Licence](#gurobi-licence)
-  - [Building](#building)
-  - [Testing](#testing)
-- [Usage](#usage)
-  - [Rope Tracking](#rope-tracking)
-  - [Cloth Tracking](#cloth-tracking)
-- [Demos](#demos)
-  - [Virtual Demos](#virtual-demos)
-    - [Downloading The rosbags](#downloading-the-rosbags)
-    - [Running The Demos](#running-the-demos)
-    - [Demo Descriptions](#demo-descriptions)
-  - [Demos With Sensors](#demos-with-sensors)
-    - [RealSense](#realsense)
-    - [Kinectv2](#kinectv2)
-    - [Azure Kinect](#azure-kinect)
-- [Adding gtest Unit Tests](#adding-gtest-unit-tests)
-- [FAQ & Misc Notes](#faq--misc-notes)
+\**: (optional) for ROS node only
 
-## Requirements
-  * Environment:
-    * Ubuntu 20 (20 is strongly preferred)
-    * ROS Noetic (Noetic strongly preferred)
-  * apt dependencies
-    * [Eigen](http://eigen.tuxfamily.org/dox/GettingStarted.html)
-    * [CGAL-5.0.3](https://github.com/CGAL/cgal/releases/tag/releases%2FCGAL-5.0.3)
-  * other dependencies
-    * [Gurobi](https://www.gurobi.com/)
-    * [faiss-1.6.3](https://github.com/facebookresearch/faiss)
-    * [kuka_iiwa_interface](https://github.com/UM-ARM-Lab/kuka_iiwa_interface)
-      * [robotiq](https://github.com/UM-ARM-Lab/robotiq) (needed by kuka_iiwa_interface)
-    * [arc_utilities](https://github.com/UM-ARM-Lab/arc_utilities)
+Installation
+------------
 
+#### Core Package
 
-## Installation
+install miniconda https://docs.conda.io/en/latest/miniconda.html
 
-### Installing ROS (ignore it if you already have it)
-
-Run `sudo -u USER_NAME install_scripts/install_ros_melodic.sh` if you use Ubuntu 18.04, or `sudo -u USER_NAME install_scripts/install_ros_noetic.sh` if you use Ubuntu 20.04
-
-### Installing Dependencies
-
-Modify USR\_NAME in `install_scripts/install_dep.sh` and run `sudo -u USER_NAME ./install_dep.sh` under `install_scripts`. It will install all dependency listed above in `~/.local`.
-
-NOTE: `source ~/.bashrc` inside `install_dep.sh` might not run successfully according to the platform. If you encounter the problem like `catkinonfig.cmake` not found, please run `source ~/.bashrc` and run `./install_pybind11_catkin.sh`.
-
-### Create catkin workspace
-
-We assume you have created a catkin workspace. Now clone this repo to that worksace. See `install_scripts/create_ws_ROS_Version.sh` or the ROS wiki on how to setup a catkin workspace.
-
-### Gurobi Licence
-
-Gurobi is a proprietary optimization package that we use. Please obtain a [free academic license](https://www.gurobi.com/academia/academic-program-and-licenses).
-
-### Building
-
+create conda virtual enviornment, you can name it whatever you want:
 ```
-# in the src directory
-git clone https://github.com/UM-ARM-Lab/cdcpd.git
+conda create --name cpdenv python
+conda activate cpdenv
 ```
 
-Once you've cloned, it might be a good idea to `rosdep install -r --from-paths cdcpd -y` to get any ROS packages you might be depending on.
+If you use a IDE such as pycharm or vscode, remember to set project interpretor to this virtual enviornment.
 
-### Testing
+For all following oprations, make sure the newly crearted virtual enviornment is activated. The command line should show the name of virtual enviornment in brackets:
+`(cpdenv) username@hostname:`
 
-CDCPD uses gtest for its testing framework. This is convenient because catkin offers very easy gtest integration with ROS. To run all unit tests for CDCPD, execute the following from your `cdcpd` directory:
-
+clone repository:
 ```
-./test_cdcpd.sh
-```
-
-This will build and execute all CDCPD unit tests to ensure the package was installed without error.
-
-Note: there isn't much special about the `test_cdcpd.sh` bash script, it simply starts a roscore and executes the `catkin test cdcpd` command with some added flags for simplifying things.
-
-## Usage
-
-To configure CDCPD for tracking rope versus cloth, several rosparams must be set (recommended to be in your launch file).
-
-### Rope Tracking
-
-ROS params and descriptions:
-- "deformable_object_type"
-  - The type of the deformable object being tracked. In this case, a rope.
-  - Type: string
-  - Value: "rope"
-- "num_points"
-  - The number of points the tracked rope will have.
-  - Type: int
-- "max_rope_length"
-  - The maximum length of the rope in meters.
-  - Type: float
-
-### Cloth Tracking
-
-ROS params and descriptions:
-- "deformable_object_type"
-  - The type of the deformable object being tracked. In this case, a cloth.
-  - Type: string
-  - Value: "cloth"
-- "length_initial_cloth"
-  - The initial length of the cloth in meters.
-  - Type: float
-- "width_initial_cloth"
-  - The initial width of the cloth in meters.
-  - Type: float
-- "grid_size_initial_guess_cloth"
-  - The size (in meters) of one square of the cloth template grid. Note! This is only providing an initial guess for the cloth template grid size. The actual grid size will be adjusted based on how well the grid size guess divides the supplied initial length and width.
-  - Type: float
-
-## Demos
-
-### Virtual Demos
-
-We offer several rosbag files to showcase what nominal function of CDCPD should look like given a proper install and sensor configuration.
-
-#### Downloading The rosbags
-
-Before running the virtual demos you must download and decompress the rosbags. To do this:
-
-1. Download the demos folder to your local machine.
-   1. The link is: https://www.dropbox.com/sh/4nsnxu4a2cxm8ko/AAC0-FsuWTHUB8FWrvp5BqR0a?dl=0
-   2. Simply click the link and download the "rosbags_compressed" zip folder.
-2. Extract the folder in the link (rosbags_compressed) to `<your_cdcpd_repo>/demos`. This should result in a folder structure that looks like `<your_cdcpd_repo>/demos/rosbags_compressed/` that has all of the compressed rosbags in this folder.
-3. Change directory to `<your_cdcpd_repo>/demos`
-4. Run the rosbag decompression script with:
-    ```
-    ./unpack_rosbags.sh
-    ```
-    This unpacks all of the compressed rosbags in `demos/rosbags_compressed/` to the `demos/rosbags/`.
-
-#### Running The Demos
-
-To run the virtual demos:
-
-1. Start a `roscore`
-   1. If you already have a `roscore` running, make sure to `rosnode cleanup` before running the demos.
-2. In another terminal, navigate to `<your_cdcpd_repo>/demos/`
-3. Run the desired demo script, e.g.
-    ```
-    ./launch_demo1.sh
-    ```
-
-This will display an example of CDCPD running.
-
-#### Demo Descriptions
-
-Note that demos loop! If you see the tracking jump around in rviz, it's likely due to the demo starting over.
-
-- Demo 1
-  - A static rope. This is a good place to start to see how CDCPD converges to tracking a short, static rope.
-
-
-### Demos With Sensors
-
-This section contains commands necessary to launch CDCPD with several different sensors. However, as long as your camera node publishes RGB/D or point clouds it should be easy to adapt one of these launch files.
-
-#### RealSense
-
-To run with a realsense, without the obstacle or gripper constraints, try this:
-
-```
-roslaunch realsense2_camera rs_camera.launch enable_pointcloud:=true
-rviz -d cdcpd/rviz/realsense.rviz  # From local cdcpd directory
-roslaunch cdcpd realsense.launch
+git clone git@github.com:UM-ARM-Lab/cdcpd.git --branch v0.1.0 --single-branch
 ```
 
-#### Kinectv2
-
+install pip package:
 ```
-roslaunch kinect2_calibration_files kinect2_bridge_tripodA.launch  # ARMLab internal usage
-rviz -d cdcpd/rviz/kinect.rviz  # From local cdcpd directory
-roslaunch cdcpd kinect.launch
+cd cdcpd
+pip install -e .
 ```
 
-#### Azure Kinect
+-e installs the library in edit mode, thus changes made in the repository will be affected globally
+. means install package (defined by setup.py) in current directory.
 
-The Azure Kinect launch file contains all node launches necessary to run the Azure Kinect driver, CDCPD, and RVIZ. As such, you only need to execute the following command:
+You may noticed that a package named [glplotlib](https://github.com/cheng-chi/glplotlib) is installed by pip. glplotlib is another opensource library developed by Cheng Chi for virualizing 3D point cloud with better performance (comparing to matplotlib).
 
+install opencv:
 ```
-roslaunch cdcpd azure_2_cloth.launch
+conda install opencv
 ```
 
-## Adding gtest Unit Tests
+Gurobi as a propriotoray optimization package that we use. Please obtain a [free academic license](https://user.gurobi.com/download/licenses/free-academic)
 
-This project uses the `googletest` (`gtest` for short) framework for testing. This is the process of writing a new test suite:
+install gurobi:
+```
+conda install gurobi -c gurobi
+```
+install gurobi key with [grbgetkey](https://www.gurobi.com/documentation/8.1/quickstart_mac/retrieving_a_free_academic.html).
+Note that gurobi installation requires university network. If you are not on campus, follow this instruction to setup [UMVPN](https://documentation.its.umich.edu/vpn/vpn-linux-vpn-instructions).
 
-Note: Test suite is used to refer to a new group of tests indepenedent from other tests. In this repository, we're making a new header file for each test suite and writing a new test suite for each class.
 
-1. Make a new header file in the `cdcpd/tests/include` directory of the repository.
-  - The name of the new header file should be the name of the class (or functionality) under test concatenated with Test.h, e.g. if you're testing a class named `MyClass`, the name of the header file would be `MyClassTest.h`.
-2. In the new <test_suite>.h file, write the following as boilerplate:
-    ```
-    #include "<where_the_class_you're_testing_is_declared>"
-    #include "gtest/gtest.h"
+If you need tracking failure recovery, you will also need to compile VFH feature library.
+Makesure you have PCL-1.8 installed. If you have ROS installed, its should be already there.
+```
+cd cdcpd/pcl_features
+mkdir build
+cd build
+cmake ..
+make
+cp libfeatures.so ../libfeatures.so
+cd ..
+rm -r build
+```
 
-    // insert any test fixtures here.
+If you need the ROS node, ROS related installation are needed:
+```
+pip install rosdep
+git clone git@github.com:eric-wieser/ros_numpy.git
+cd ros_numpy
+pip install .
+```
+Note that ROS related code are only tested with ROS Melodic on Ubuntu 18.04.
 
-    TEST(<test_suite_name>, <test_name>) {
-      // insert code for test here using:
-      //    ASSERT_*(x, y) when you want the test to halt on failure.
-      //    EXPECT_*(x, y) when you want the test to continue upon failure.
-      //                   The EXPECT_* is best practice.
-    }
-    ```
-    where the "`*`" in `ASSERT_*` and `EXPECT_*` is meant to be filled in with whatever you would like to assert or expect, e.g. `EXPECT_TRUE(XXX)` if `XXX` should evaluate to be `true`.
-    - Note that neither `<test_suite_name>` nor `<test_name>` should have any underscores in the name. This doesn't play nicely with `gtest`'s internal macro naming scheme.
-    - You can read more about test fixtures in the google test documentation. They're *very* handy!
-3. Write the first test that you would like.
-4. In tests/main.cpp, `#include` your new test suite header file.
+Demo
+------------
+To run the demo, you need download some [data](https://drive.google.com/drive/folders/1QSmSOw0JvQl9xnbVnBNogk0OcNo0Rn4_?usp=sharing) into <project_root>/data folder.
+Files ends with ".bag" are rosbag files and are used for testing the ROS node.
+Files ends with ".pk" are python pickle files extracted from corresponding ".bag" files, used in examples.
 
-From here, the `cdcpd/tests/main.cpp` file will automatically discover all tests in your newly written test suite. No need to manually add function calls!
+To run cdcpd demo:
+```
+python examples/basic_cdcpd_example.py
+```
 
-## FAQ & Misc Notes
+To run ROS node:
 
-**Q:** It runs without error but doesn't seem to be processing images, help!
-
-**A:** We use a time synchronizer with "exact" time policy (the deafult). Therefore if your depth, color, and camera_info messages do not have exactly the same time stamps, the synchronizer will ignore it and nothing will happen.
+All following in commands need to be running at the same time, you may start one terminal for each:\
+Start ROS core: `roscore`\
+Start Rviz for visualization: `rviz`\
+Start tracking node: `python ros_nodes/simple_cdcpd_node.py`\
+Start playing rosbag: `rosbag play -l data/rope_simple.bag`

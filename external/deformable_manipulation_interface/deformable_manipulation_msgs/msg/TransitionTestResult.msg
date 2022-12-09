@@ -1,4 +1,0 @@
-std_msgs/Header header
-deformable_manipulation_msgs/WorldState start_after_following_path
-deformable_manipulation_msgs/WorldState[] microsteps_all
-deformable_manipulation_msgs/WorldState[] microsteps_last_action

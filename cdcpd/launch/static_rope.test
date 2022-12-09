@@ -1,3 +1,0 @@
-<launch>
-	<test test-name="static_rope" pkg="cdcpd" type="static-rope-test" cwd="node"/>
-</launch>

@@ -1,0 +1,14 @@
+Metadata-Version: 1.0
+Name: cdcpd
+Version: 0.0.1
+Summary: Library for Constrained Deformable Coherent Point Drift
+Home-page: https://github.com/chichengumich/cdcpd
+Author: Cheng Chi
+Author-email: chicheng@umich.edu
+License: MIT
+Description: 
+        CDCPD is a implementation of Constrained Deformable Coherent Point Drift from paper:
+        Occlusion-robust Deformable Object Tracking without Physics Simulation. Cheng Chi and
+        Dmitry Berenson.
+        
+Platform: UNKNOWN

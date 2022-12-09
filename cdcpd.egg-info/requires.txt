@@ -1,0 +1,6 @@
+glplotlib
+matplotlib
+numexpr
+numpy
+scikit-learn
+scipy
