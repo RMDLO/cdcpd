@@ -1,5 +1,5 @@
 import rospy
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, Image
 import numpy as np
 from numpy.lib.recfunctions import structured_to_unstructured, unstructured_to_structured
 import ros_numpy
@@ -78,18 +78,6 @@ def ndarray2MarkerArray (Y, marker_frame, node_color, line_color):
         cur_line_result.pose.position.y = ((Y[i] + Y[i+1])/2)[1]
         cur_line_result.pose.position.z = ((Y[i] + Y[i+1])/2)[2]
 
-        # vec1 = np.array([0, 0, 1])
-        # vec2 = (Y[i+1]-Y[i])/pt2pt_dis(Y[i+1], Y[i])
-        # cross_product = np.cross(vec1, vec2)
-        # x = cross_product[1]
-        # y = cross_product[2]
-        # z = cross_product[0]
-        # w = np.sqrt((len(vec1)**2) * (len(vec2)**2)) + np.dot(vec1, vec2)
-        # x = x / np.sqrt(x**2 + y**2 + z**2 + w**2)
-        # y = y / np.sqrt(x**2 + y**2 + z**2 + w**2)
-        # z = z / np.sqrt(x**2 + y**2 + z**2 + w**2)
-        # w = w / np.sqrt(x**2 + y**2 + z**2 + w**2)
-
         rot_matrix = rotation_matrix_from_vectors(np.array([0, 0, 1]), (Y[i+1]-Y[i])/pt2pt_dis(Y[i+1], Y[i])) 
         r = R.from_matrix(rot_matrix)
         x = r.as_quat()[0]
@@ -113,6 +101,12 @@ def ndarray2MarkerArray (Y, marker_frame, node_color, line_color):
     
     return results
 
+# for creating occlusion manually
+occlusion_mask_rgb = None
+def update_occlusion_mask(data):
+	global occlusion_mask_rgb
+	occlusion_mask_rgb = ros_numpy.numpify(data)
+
 
 # initialize tracker
 # kinect_intrinsics = np.array(
@@ -123,7 +117,7 @@ proj_matrix = np.array([[918.359130859375,              0.0, 645.8908081054688],
                         [             0.0, 916.265869140625,   354.02392578125], \
                         [             0.0,              0.0,               1.0]])
 
-template_verts, template_edges = build_line(0.46, 20)
+template_verts, template_edges = build_line(0.46, 37)
 key_func = chroma_key_rope
 
 prior = ThresholdVisibilityPrior(proj_matrix)
@@ -139,12 +133,24 @@ pub = rospy.Publisher("/cdcpd_tracker/points", PointCloud2, queue_size=10)
 results_pub = rospy.Publisher("/results", MarkerArray, queue_size=10)
 
 def callback(msg: PointCloud2):
+    global occlusion_mask_rgb
+
     # converting ROS message to dense numpy array
     data = ros_numpy.numpify(msg)
     arr = ros_numpy.point_cloud2.split_rgb_field(data)
     point_cloud_img = structured_to_unstructured(arr[['x', 'y', 'z']])
     color_img = structured_to_unstructured(arr[['r', 'g', 'b']])
     mask_img = key_func(point_cloud_img, color_img)
+
+    # process opencv mask
+    if occlusion_mask_rgb is None:
+        occlusion_mask_rgb = np.ones(color_img.shape).astype('uint8')*255
+    occlusion_mask = cv2.cvtColor(occlusion_mask_rgb.copy(), cv2.COLOR_RGB2GRAY)
+    mask_img = cv2.bitwise_and(mask_img.astype(np.uint8), occlusion_mask.copy())
+    mask_img = mask_img.astype(np.bool_)
+
+    # mask_img is 720x1080x1
+    # print(type(mask_img[0, 0]))
 
     # invoke tracker
     tracking_result = cdcpd.step(point_cloud=point_cloud_img,
@@ -167,6 +173,7 @@ def main():
     rospy.init_node('cdcpd_tracker_node')
     # rospy.Subscriber("/kinect2_victor_head/qhd/points", PointCloud2, callback, queue_size=2)
     rospy.Subscriber("/camera/depth/color/points", PointCloud2, callback, queue_size=2)
+    rospy.Subscriber('/mask_with_occlusion', Image, update_occlusion_mask)
     rospy.spin()
 
 
