@@ -1,28 +1,21 @@
-<?xml version="1.0"?>
-<package>
-  <name>cdcpd</name>
-  <version>0.1.0</version>
-  <description>
-    TODO
-  </description>
-  <url type="repository">https://github.com/UM-ARM-Lab/cdcpd</url>
-  <maintainer email="dmcconac@umich.edu">Dale McConachie</maintainer>
-  <author email="chicheng@umich.edu">Cheng Chi</author>
-  <author email="dmcconac@umich.edu">Dale McConachie</author>
-  <author email="anveepnaik@gmail.com">Anvee Naik</author>
-  <author email="spschul@umich.edu">Steven Schulte</author>
-  <author email="yixuanwa@umich.edu">Yixuan Wang</author>
-  <license>BSD</license>
-  <!-- This is required by REP-136. -->
-  <!-- buildtool_depend>cmake</buildtool_depend -->
-  <buildtool_depend>catkin</buildtool_depend>
-
-  <build_depend>smmap</build_depend>
-
-  <run_depend>smmap</run_depend>
-
-  <export>
-    <!-- build_type>cmake</build_type -->
-  </export>
+<package format="2">
+<name>cdcpd</name>
+<version>0.1.0</version>
+<description>tracking for rope and cloth</description>
+<url type="repository">https://github.com/UM-ARM-Lab/cdcpd</url>
+<maintainer email="dmcconac@umich.edu">Dale McConachie</maintainer>
+<author email="chicheng@umich.edu">Cheng Chi</author>
+<author email="dmcconac@umich.edu">Dale McConachie</author>
+<author email="anveepnaik@gmail.com">Anvee Naik</author>
+<author email="spschul@umich.edu">Steven Schulte</author>
+<author email="yixuanwa@umich.edu">Yixuan Wang</author>
+<license>BSD</license>
+<buildtool_depend>catkin</buildtool_depend>
+<depend>sdf_tools</depend>
+<depend>smmap_models</depend>
+<depend>moveit_msgs</depend>
+<depend>geometric_shapes</depend>
+<depend>pybind11_catkin</depend>
+<depend>pyrosmsg</depend>
+<depend>smmap_utilities</depend>
 </package>
-

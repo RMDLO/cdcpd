@@ -1697,26 +1697,26 @@ int main(int argc, char* argv[])
         fps=10;    
     }
 	if (is_record) {
-		mkdir((workingDir+"/../video/ICRA/" + bagfile + "_" + time_str).c_str(), 0777);
-		video_pred0.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/pred_0.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
-		if (is_pred1) {
-			video_pred1.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/pred_1.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
-		}
-		if (is_pred2) {
-			video_pred2.open(workingDir+"/../video/ICRA/" + bagfile + "_" +time_str + "/pred_2.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
-		}
-		if (is_no_pred) {
-			video_cdcpd.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/cdcpd.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
-		}
-		if (is_cpd_physics) {	
-			video_cpd_phy.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/cpd_physics.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
-		}
-        // if (is_combined_truth) {
-		// 	video_comb.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/combined.avi",CV_FOURCC('M','J','P','G'), 10, cv::Size(color_image_init.cols,color_image_init.rows));
+		// mkdir((workingDir+"/../video/ICRA/" + bagfile + "_" + time_str).c_str(), 0777);
+		// video_pred0.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/pred_0.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
+		// if (is_pred1) {
+		// 	video_pred1.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/pred_1.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
+		// }
+		// if (is_pred2) {
+		// 	video_pred2.open(workingDir+"/../video/ICRA/" + bagfile + "_" +time_str + "/pred_2.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
+		// }
+		// if (is_no_pred) {
+		// 	video_cdcpd.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/cdcpd.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
+		// }
+		// if (is_cpd_physics) {	
+		// 	video_cpd_phy.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/cpd_physics.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
+		// }
+        // // if (is_combined_truth) {
+		// // 	video_comb.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/combined.avi",CV_FOURCC('M','J','P','G'), 10, cv::Size(color_image_init.cols,color_image_init.rows));
+        // // }
+        // if (is_truth) {
+		// 	video_truth.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/truth.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
         // }
-        if (is_truth) {
-			video_truth.open(workingDir+"/../video/ICRA/" + bagfile + "_" + time_str + "/truth.avi",CV_FOURCC('M','J','P','G'), fps, cv::Size(color_image_init.cols,color_image_init.rows));
-        }
 	}
     while(color_iter != color_images.cend() && depth_iter != depth_images.cend() && info_iter != camera_infos.cend())
     {

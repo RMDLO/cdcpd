@@ -15,7 +15,7 @@
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/filters/voxel_grid.h>
 
-#include <smmap/ros_communication_helpers.h>
+#include <smmap_utilities/ros_communication_helpers.h>
 #include <sdf_tools/collision_map.hpp>
 #include <sdf_tools/sdf.hpp>
 #include <arc_utilities/eigen_helpers.hpp>

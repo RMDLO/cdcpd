@@ -119,4 +119,4 @@ target_link_libraries(${PROJECT_NAME}_bagfile PRIVATE
   CGAL::CGAL_Qt5
   Qt5::Gui
 )
-target_compile_options(${PROJECT_NAME}_bagfile PRIVATE -O3 -Wall -Wextra -Wconversion -Werror -Wshadow)
+target_compile_options(${PROJECT_NAME}_bagfile PRIVATE -O3 -Wall -Wextra -Wconversion -Wshadow) # -Werror)

@@ -9,8 +9,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CATKIN_PACKAGES
-    smmap
-)
+        smmap_models
+        smmap_utilities
+        sdf_tools
+        moveit_msgs
+        geometric_shapes
+        pyrosmsg
+        pybind11_catkin
+        )
 
 # https://blog.kitware.com/cmake-and-the-default-build-type/
 set(default_build_type "Release")
