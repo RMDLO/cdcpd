@@ -1,2 +1,2 @@
-victor_hardware_interface/JointValueQuantity joint_stiffness
-victor_hardware_interface/JointValueQuantity joint_damping
+victor_hardware_interface_msgs/JointValueQuantity joint_stiffness
+victor_hardware_interface_msgs/JointValueQuantity joint_damping

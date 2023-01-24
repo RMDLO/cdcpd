@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package>
-  <name>victor_hardware_interface</name>
+  <name>victor_hardware_interface_msgs</name>
   <version>0.0.0</version>
   <description>The victor_hardware_interface package</description>
 

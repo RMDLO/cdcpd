@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(victor_hardware_interface)
+project(victor_hardware_interface_msgs)
 
 set(CATKIN_PACKAGES
     diagnostic_msgs
