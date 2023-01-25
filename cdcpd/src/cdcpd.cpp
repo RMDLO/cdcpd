@@ -798,12 +798,19 @@ point_clouds_from_images(const cv::Mat& depth_image,
     // using DepthTraits = cdcpd::DepthTraits<T>;
 	
     // Use correct principal point from calibration
-    auto const center_x = intrinsics(0, 2);
-    auto const center_y = intrinsics(1, 2);
+
+    // ----- commented -----
+    // auto const center_x = intrinsics(0, 2);
+    // auto const center_y = intrinsics(1, 2);
+    // ----- commented -----
 
     auto const unit_scaling = 0.001;
-    auto const constant_x = 1.0f / (intrinsics(0, 0) * pixel_len);
-    auto const constant_y = 1.0f / (intrinsics(1, 1) * pixel_len);
+
+    // ----- commented -----
+    // auto const constant_x = 1.0f / (intrinsics(0, 0) * pixel_len);
+    // auto const constant_y = 1.0f / (intrinsics(1, 1) * pixel_len);
+    // ----- commented -----
+
     auto constexpr bad_point = std::numeric_limits<float>::quiet_NaN();
 
     // ENHANCE: change the way to get access to depth image and rgb image to be more readable
@@ -831,9 +838,32 @@ point_clouds_from_images(const cv::Mat& depth_image,
             // Assume depth = 0 is the standard was to note invalid
             if (std::isfinite(depth))
             {
-                float x = (float(u) - center_x) * pixel_len * float(depth) * unit_scaling * constant_x;
-                float y = (float(v) - center_y) * pixel_len * float(depth) * unit_scaling * constant_y;
+                // realsense projection matrix
+                // proj_matrix = np.array([[918.359130859375,              0.0, 645.8908081054688, 0.0], \
+                //                         [             0.0, 916.265869140625,   354.02392578125, 0.0], \
+                //                         [             0.0,              0.0,               1.0, 0.0]])
+                // ---- u ----
+                // |
+                // v
+                // |
+
+                // ----- changed to -----
+                double center_x = 645.8908081054688;
+                double center_y = 354.02392578125;
+                double fx = 918.359130859375;
+                double fy = 916.265869140625;
+
                 float z = float(depth) * unit_scaling;
+
+                float x = (float(u) - center_x) / fx * z;
+                float y = (float(v) - center_y) / fy * z;
+                // ----- changed to -----
+                
+                // ----- commented -----
+                // float x = (float(u) - center_x) * pixel_len * float(depth) * unit_scaling * constant_x;
+                // float y = (float(v) - center_y) * pixel_len * float(depth) * unit_scaling * constant_y;
+                // ----- commented -----
+
                 // Add to unfiltered cloud
                 // ENHANCE: be more concise
                 #ifdef ENTIRE
@@ -846,12 +876,19 @@ point_clouds_from_images(const cv::Mat& depth_image,
                 #endif
 
                 Eigen::Array<float, 3, 1> point(x, y, z);
-                if (mask.at<bool>(v, u) &&
-                    point.min(upper_bounding_box.array()).isApprox(point) &&
-                    point.max(lower_bounding_box.array()).isApprox(point))
+                // if (mask.at<bool>(v, u) &&
+                //     point.min(upper_bounding_box.array()).isApprox(point) &&
+                //     point.max(lower_bounding_box.array()).isApprox(point))
+                // {
+                //     filtered_cloud->push_back(pcl::PointXYZ(x, y, z));
+                // }
+
+                if (mask.at<bool>(v, u))
                 {
                     filtered_cloud->push_back(pcl::PointXYZ(x, y, z));
                 }
+
+                // filtered_cloud->push_back(pcl::PointXYZ(x, y, z));
             }
             #ifdef ENTIRE
             else

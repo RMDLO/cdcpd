@@ -65,7 +65,8 @@ int main(int argc, char* argv[]) {
     ros::init(argc, argv, "create_bagfile");
     ros::NodeHandle nh;
 
-    ros::Publisher left_gripper_pub = nh.advertise<victor_hardware_interface::Robotiq3FingerStatus_sync>("/left_gripper_status", 1);
+    ros::Publisher left_gripper_pub = nh.advertise<victor_hardware_interface::Robotiq3FingerStatus_sync>("/left_gripper_status", 10);
+    ros::Publisher right_gripper_pub = nh.advertise<victor_hardware_interface::Robotiq3FingerStatus_sync>("/right_gripper_status", 10);
 
     std::vector<std::string> topics;
     topics.push_back(std::string("/kinect2_victor_head/qhd/image_color_rect"));
@@ -115,7 +116,9 @@ int main(int argc, char* argv[]) {
     // test
     while (ros::ok()) {
         l_msg->header.stamp.sec = static_cast<uint32_t>(static_cast<int>(ros::Time::now().toSec()));
+        r_msg->header.stamp.sec = static_cast<uint32_t>(static_cast<int>(ros::Time::now().toSec()));
         left_gripper_pub.publish(l_msg);
+        right_gripper_pub.publish(r_msg);
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
     

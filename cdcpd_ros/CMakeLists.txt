@@ -104,6 +104,23 @@ include_directories(
 # )
 #target_compile_options(${PROJECT_NAME} PRIVATE -O3 -Wall -Wextra -Wconversion -Wshadow)
 
+# test
+add_executable(testcdcpd2 
+  src/cdcpd2_test.cpp
+)
+set_target_properties(testcdcpd2 PROPERTIES
+    OUTPUT_NAME test_cdcpd2 PREFIX ""
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED YES)
+add_dependencies(testcdcpd2 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(testcdcpd2 PRIVATE
+  ${catkin_LIBRARIES}
+  CGAL::CGAL
+  CGAL::CGAL_Qt5
+  Qt5::Gui
+)
+target_compile_options(testcdcpd2 PRIVATE -O3 -Wall -Wextra -Wconversion -Wshadow)
+
 # Node for bagged data
 add_executable(${PROJECT_NAME}_bag_test 
   src/create_bag.cpp
@@ -122,7 +139,7 @@ target_link_libraries(${PROJECT_NAME}_bag_test PRIVATE
 target_compile_options(${PROJECT_NAME}_bag_test PRIVATE -O3 -Wall -Wextra -Wconversion -Wshadow)
 
 add_executable(${PROJECT_NAME}_bagfile 
-  src/create_bag.cpp
+  src/cdcpd_bagfile.cpp
 )
 set_target_properties(${PROJECT_NAME}_bagfile PROPERTIES
     OUTPUT_NAME bagfile PREFIX ""

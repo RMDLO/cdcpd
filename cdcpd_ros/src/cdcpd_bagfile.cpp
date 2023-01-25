@@ -1822,6 +1822,8 @@ int main(int argc, char* argv[])
         start = std::chrono::system_clock::now(); 
 		CDCPD::Output out;
 		cout << "prediction choice: 0" << endl;
+        // log time
+        std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
         if (is_sim) {
 			out = cdcpd(rgb_image, depth_image, hsv_mask, intrinsics, template_cloud, g_dot, g_config, true, is_interaction, true, 0, fixed_points);
         	std::ofstream(workingDir + "/error.txt", std::ofstream::app) << calc_mean_error(out.gurobi_output->getMatrixXfMap(), one_frame_truth) << " ";
@@ -1837,11 +1839,14 @@ int main(int argc, char* argv[])
 				cout << "hard code the bag file" << endl;
 				is_grasped = {false, true};
 			}
+
         	out = cdcpd(rgb_image, depth_image, hsv_mask, intrinsics, template_cloud, g_dot, g_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
         } else {
 			out = cdcpd(rgb_image, depth_image, hsv_mask, intrinsics, template_cloud, true, is_interaction, true, 0, fixed_points);
         }
         template_cloud = out.gurobi_output;
+        double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+        ROS_WARN_STREAM("prediction choice: 0 time difference: " + std::to_string(time_diff) + " ms");
         end = std::chrono::system_clock::now();
         elapsed_seconds = end-start;
         time_pred_0 += elapsed_seconds.count();
@@ -1856,18 +1861,22 @@ int main(int argc, char* argv[])
 		CDCPD::Output out_without_prediction;
         if (is_no_pred) {
 			cout << "no prediction used" << endl;
+            // log time
+            std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 			if (is_sim) {
         		out_without_prediction = cdcpd_without_prediction(rgb_image, depth_image, hsv_mask, intrinsics, template_cloud_without_prediction, g_dot, g_config, false, false, false, 0, fixed_points);
 				std::ofstream(workingDir + "/error_no_pred.txt", std::ofstream::app) << calc_mean_error(out_without_prediction.gurobi_output->getMatrixXfMap(), one_frame_truth) << " ";
 			} else {
 				if (is_gripper_info) {
         			out_without_prediction = cdcpd_without_prediction(rgb_image, depth_image, hsv_mask, intrinsics, template_cloud_without_prediction, g_dot, g_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, false, false, false, 0, fixed_points);
-				} else {
+                } else {
         			out_without_prediction = cdcpd_without_prediction(rgb_image, depth_image, hsv_mask, intrinsics, template_cloud_without_prediction, false, false, false, 0, fixed_points);
 				}
 			}
 			template_cloud_without_prediction = out_without_prediction.gurobi_output;
 			out_without_prediction.gurobi_output->header.frame_id = frame_id;
+            double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+            ROS_WARN_STREAM("no prediction used time difference: " + std::to_string(time_diff) + " ms");
 		}  
         end = std::chrono::system_clock::now();
         elapsed_seconds = end-start;
@@ -1877,14 +1886,18 @@ int main(int argc, char* argv[])
 		CDCPD::Output out_pred1;
         if (is_pred1) {
 			cout << "prediction choice: 1" << endl;
+            // log time
+            std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 			if (is_sim) {
         		out_pred1 = cdcpd_pred1(rgb_image, depth_image, hsv_mask, intrinsics, template_cloud_pred1, g_dot, g_config, true, is_interaction, true, 1, fixed_points);
 				std::ofstream(workingDir + "/error_pred1.txt", std::ofstream::app) << calc_mean_error(out_pred1.gurobi_output->getMatrixXfMap(), one_frame_truth) << " ";
         	} else {
         		out_pred1 = cdcpd_pred1(rgb_image, depth_image, hsv_mask, intrinsics, template_cloud_pred1, g_dot, g_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 1, fixed_points);
-			}
+            }
 			template_cloud_pred1 = out_pred1.gurobi_output;
 			out_pred1.gurobi_output->header.frame_id = frame_id;
+            double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+            ROS_WARN_STREAM("prediction choice: 1 time difference: " + std::to_string(time_diff) + " ms");
         }
         end = std::chrono::system_clock::now();
         elapsed_seconds = end-start;
@@ -1894,6 +1907,8 @@ int main(int argc, char* argv[])
 		CDCPD::Output out_pred2;
         if (is_pred2) {
 			cout << "prediction choice: 2" << endl;
+            // log time
+            std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 			if (is_sim) {
         		out_pred2 = cdcpd_pred2(rgb_image, depth_image, hsv_mask, intrinsics, template_cloud_pred2, g_dot, g_config, true, is_interaction, true, 2, fixed_points);
 				std::ofstream(workingDir + "/error_pred2.txt", std::ofstream::app) << calc_mean_error(out_pred2.gurobi_output->getMatrixXfMap(), one_frame_truth) << " ";
@@ -1902,6 +1917,8 @@ int main(int argc, char* argv[])
 			}
 			template_cloud_pred2 = out_pred2.gurobi_output;
 			out_pred2.gurobi_output->header.frame_id = frame_id;
+            double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+            ROS_WARN_STREAM("prediction choice: 2 time difference: " + std::to_string(time_diff) + " ms");
         }
         end = std::chrono::system_clock::now();
         elapsed_seconds = end-start;
