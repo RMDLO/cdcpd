@@ -121,40 +121,40 @@ std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
 }
 
 // hard coded
-std::vector<double> gripper_pt = {0.270685, 0.1812, 0.624408};
+std::vector<double> gripper_pt = {0.285294, 0.0127347, 0.632526};
 std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_hardcoded()
 {
     MatrixXf gmm_Y(30, 3);
-    gmm_Y << 0.270685, 0.1812, 0.624408,
-            0.258409, 0.183101, 0.624408,
-            0.238014, 0.1878, 0.624408,
-            0.213472, 0.192522, 0.624408,
-            0.19506, 0.196112, 0.624408,
-            0.176473, 0.197718, 0.624408,
-            0.15489, 0.201066, 0.624408,
-            0.136419, 0.202891, 0.624408,
-            0.116371, 0.204896, 0.624408,
-            0.100214, 0.206039, 0.624408,
-            0.0833789, 0.207534, 0.624408,
-            0.0703283, 0.207226, 0.624408,
-            0.0556012, 0.206969, 0.624408,
-            0.0398195, 0.205295, 0.624408,
-            0.025199, 0.202149, 0.624408,
-            0.00559887, 0.198481, 0.624408,
-            -0.0145061, 0.195392, 0.624408,
-            -0.0341045, 0.19373, 0.624408,
-            -0.0532849, 0.190176, 0.624408,
-            -0.0750388, 0.190118, 0.624408,
-            -0.0939589, 0.191031, 0.624408,
-            -0.116262, 0.192016, 0.624408,
-            -0.13328, 0.193038, 0.624408,
-            -0.151965, 0.195188, 0.624408,
-            -0.168037, 0.197471, 0.624408,
-            -0.189034, 0.19754, 0.624408,
-            -0.210043, 0.197151, 0.624408,
-            -0.228541, 0.197838, 0.624408,
-            -0.248693, 0.195357, 0.624408,
-            -0.266968, 0.191139, 0.624408;
+    gmm_Y << 0.285294, 0.0127347, 0.632526,
+            0.266973, 0.00959517, 0.632526,
+            0.257377, 0.00638234, 0.632526,
+            0.24186, 0.00224015, 0.632526,
+            0.220945, -0.0026021, 0.632526,
+            0.200226, -0.00483629, 0.632526,
+            0.182535, -0.00207648, 0.632526,
+            0.165501, 0.00362017, 0.632526,
+            0.148284, 0.0072165, 0.632526,
+            0.133943, 0.012595, 0.632526,
+            0.116902, 0.0210439, 0.632526,
+            0.102139, 0.0310499, 0.632526,
+            0.0882692, 0.039481, 0.632526,
+            0.0748471, 0.0461338, 0.632526,
+            0.0628463, 0.0528506, 0.632526,
+            0.0491495, 0.0577945, 0.632526,
+            0.0305501, 0.0641767, 0.632526,
+            0.00792847, 0.0699127, 0.632526,
+            -0.0151124, 0.0698673, 0.632526,
+            -0.035358, 0.0664779, 0.632526,
+            -0.0551847, 0.0624832, 0.632526,
+            -0.0747854, 0.0554312, 0.632526,
+            -0.0932287, 0.0478233, 0.632526,
+            -0.108415, 0.0435355, 0.632526,
+            -0.124954, 0.0416542, 0.632526,
+            -0.148469, 0.0402912, 0.632526,
+            -0.174403, 0.0420593, 0.632526,
+            -0.194335, 0.0456703, 0.632526,
+            -0.212603, 0.0539975, 0.632526,
+            -0.2305, 0.0610373, 0.632526;
 
 	int points_on_rope = gmm_Y.rows();
 
@@ -177,7 +177,7 @@ std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_hardcoded()
 // initialize cdcpd2
 const double alpha = 0.5;
 const double lambda = 1.0;
-const float zeta = 10.0;
+const float zeta = 100.0;
 const double k_spring = 100.0;
 const double beta = 1.0;
 const bool is_sim = false;
@@ -186,7 +186,7 @@ const bool is_gripper_info = true;
 const double translation_dir_deformability = 1.0;
 const double translation_dis_deformability = 1.0;
 const double rotation_deformability = 10.0;
-const int points_on_rope = 40;
+// const int points_on_rope = 40;
 
 CDCPD cdcpd;
 
@@ -274,12 +274,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     cv::Matx33d placeholder;
     std::vector<CDCPD::FixedPoint> fixed_points;
     
-    // Eigen::Vector3f left_pos((float)-0.257977, (float)-0.00798999, (float)0.612674);
-    // CDCPD::FixedPoint left_gripper = {left_pos, 0};
-    // Eigen::Vector3f right_pos((float)-0.257977, (float)-0.00798999, (float)0.612674);
-    // CDCPD::FixedPoint right_gripper = {right_pos, 0};
-    // fixed_points.push_back(left_gripper);
-    // fixed_points.push_back(right_gripper);
+    Eigen::Vector3f left_pos((float)gripper_pt[0], (float)gripper_pt[1], (float)gripper_pt[2]);
+    CDCPD::FixedPoint left_gripper = {left_pos, 0};
+    Eigen::Vector3f right_pos((float)gripper_pt[0], (float)gripper_pt[1], (float)gripper_pt[2]);
+    CDCPD::FixedPoint right_gripper = {right_pos, 0};
+    fixed_points.push_back(left_gripper);
+    fixed_points.push_back(right_gripper);
 
     std::vector<bool> is_grasped = {false, true};
     bool is_interaction = false;
@@ -342,10 +342,10 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     // out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
 
     // // ----- pred 1 -----
-    out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 1, fixed_points);
+    // out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 1, fixed_points);
 
     // ----- pred 2 -----
-    // out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
+    out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
     
     template_cloud = out.gurobi_output;
 

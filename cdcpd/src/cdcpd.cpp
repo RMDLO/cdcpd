@@ -1079,7 +1079,7 @@ Matrix3Xf CDCPD::cpd(const Matrix3Xf& X,
 
         MatrixXf B = PX.transpose() - (p1d + sigma2 * lambda * m_lle) * Y.transpose() + zeta * (Y_pred.transpose() - Y.transpose()); //end = std::chrono::system_clock::now();std::cout << "561: " << (end-start).count() << std::endl;
 
-        MatrixXf W = (A).householderQr().solve(B); //+obs_reg);
+        MatrixXf W = (A).completeOrthogonalDecomposition().solve(B); //+obs_reg);
         // MatrixXf lastW = W;
 
         // int W_int = 0;
@@ -1262,7 +1262,7 @@ Matrix3Xf CDCPD::cheng_cpd(const Matrix3Xf& X,
 
         MatrixXf B = PX.transpose() - (p1d + sigma2 * lambda * m_lle) * Y.transpose(); //end = std::chrono::system_clock::now();std::cout << "561: " << (end-start).count() << std::endl;
 
-        MatrixXf W = A.householderQr().solve(B);
+        MatrixXf W = A.completeOrthogonalDecomposition().solve(B);
         // MatrixXf lastW = W;
 
         // int W_int = 0;
@@ -1443,7 +1443,7 @@ Matrix3Xf CDCPD::cpd(const Matrix3Xf& X,
 
         MatrixXf B = PX.transpose() - (p1d + sigma2 * lambda * m_lle) * Y.transpose(); //end = std::chrono::system_clock::now();std::cout << "561: " << (end-start).count() << std::endl;
 
-        MatrixXf W = A.householderQr().solve(B);
+        MatrixXf W = A.completeOrthogonalDecomposition().solve(B);
         // MatrixXf lastW = W;
 
         // int W_int = 0;
@@ -1656,7 +1656,7 @@ CDCPD::Output CDCPD::operator()(
     pcl::VoxelGrid<pcl::PointXYZ> sor;
     std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
     sor.setInputCloud(cloud);
-    sor.setLeafSize(0.005f, 0.005f, 0.005f);
+    sor.setLeafSize(0.012f, 0.012f, 0.012f);
     sor.filter(*cloud_downsampled);
     std::cout << "Points in fully filtered: " << cloud_downsampled->width << std::endl;
     Matrix3Xf X = cloud_downsampled->getMatrixXfMap().topRows(3);
@@ -1683,6 +1683,7 @@ CDCPD::Output CDCPD::operator()(
     Matrix3Xf TY, TY_pred;
     if (is_prediction) {
         // start = std::chrono::system_clock::now(); 
+        ROS_WARN_STREAM("used prediction");
         TY_pred = predict(Y.cast<double>(), q_dot, q_config, pred_choice).cast<float>(); // end = std::chrono::system_clock::now(); std::cout << "predict: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
         // TY_pred = Y;
         // for (int col = 0; col < gripper_idx.cols(); ++col)
@@ -1834,7 +1835,7 @@ CDCPD::Output CDCPD::operator()(
     pcl::VoxelGrid<pcl::PointXYZ> sor;
     std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
     sor.setInputCloud(cloud);
-    sor.setLeafSize(0.005f, 0.005f, 0.005f);
+    sor.setLeafSize(0.012f, 0.012f, 0.012f);
     sor.filter(*cloud_downsampled);
     std::cout << "Points in fully filtered: " << cloud_downsampled->width << std::endl;
     Matrix3Xf X = cloud_downsampled->getMatrixXfMap().topRows(3);
@@ -1949,6 +1950,7 @@ CDCPD::Output CDCPD::operator()(
     if (is_prediction) {
         // start = std::chrono::system_clock::now(); 
 		if (model != NULL) {
+            ROS_WARN_STREAM("used prediction");
         	TY_pred = predict(Y.cast<double>(), q_dot_valid, q_config_valid, pred_choice).cast<float>();
 		} else {
 			TY_pred = Y;
@@ -2093,7 +2095,7 @@ CDCPD::Output CDCPD::operator()(
     pcl::VoxelGrid<pcl::PointXYZ> sor;
     std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
     sor.setInputCloud(cloud);
-    sor.setLeafSize(0.005f, 0.005f, 0.005f);
+    sor.setLeafSize(0.012f, 0.012f, 0.012f);
     sor.filter(*cloud_downsampled);
     std::cout << "Points in fully filtered: " << cloud_downsampled->width << std::endl;
     Matrix3Xf X = cloud_downsampled->getMatrixXfMap().topRows(3);
