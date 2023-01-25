@@ -45,17 +45,17 @@
 #include <victor_hardware_interface/Robotiq3FingerStatus_sync.h>
 #include <victor_hardware_interface/Robotiq3FingerStatus.h>
 
-victor_hardware_interface::Robotiq3FingerStatus_sync::ConstPtr l_msg;
-victor_hardware_interface::Robotiq3FingerStatus_sync::ConstPtr r_msg;
+victor_hardware_interface::Robotiq3FingerStatus_sync::Ptr l_msg;
+victor_hardware_interface::Robotiq3FingerStatus_sync::Ptr r_msg;
 
-static victor_hardware_interface::Robotiq3FingerStatus_sync::ConstPtr gripper_status_origin_to_sync(
+static victor_hardware_interface::Robotiq3FingerStatus_sync::Ptr gripper_status_origin_to_sync(
 	const victor_hardware_interface::Robotiq3FingerStatus::ConstPtr origin, int diff)
 {
 	victor_hardware_interface::Robotiq3FingerStatus_sync sync;
 	sync.header = origin->header;
 	sync.header.stamp.sec += diff;
 	sync.finger_a_status = origin->finger_a_status;
-	victor_hardware_interface::Robotiq3FingerStatus_sync::ConstPtr syncptr(new victor_hardware_interface::Robotiq3FingerStatus_sync(sync));
+	victor_hardware_interface::Robotiq3FingerStatus_sync::Ptr syncptr(new victor_hardware_interface::Robotiq3FingerStatus_sync(sync));
 	// cout << (syncptr->header).stamp << endl;
 	return syncptr;
 	// return std::make_shared<victor_hardware_interface::Robotiq3FingerStatus_sync> (sync const);
@@ -63,6 +63,9 @@ static victor_hardware_interface::Robotiq3FingerStatus_sync::ConstPtr gripper_st
 
 int main(int argc, char* argv[]) {
     ros::init(argc, argv, "create_bagfile");
+    ros::NodeHandle nh;
+
+    ros::Publisher left_gripper_pub = nh.advertise<victor_hardware_interface::Robotiq3FingerStatus_sync>("/left_gripper_status", 1);
 
     std::vector<std::string> topics;
     topics.push_back(std::string("/kinect2_victor_head/qhd/image_color_rect"));
@@ -108,6 +111,14 @@ int main(int argc, char* argv[]) {
     }
 
     bag.close();
+
+    // test
+    while (ros::ok()) {
+        l_msg->header.stamp.sec = static_cast<uint32_t>(static_cast<int>(ros::Time::now().toSec()));
+        left_gripper_pub.publish(l_msg);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+    
     std::cout << "all tasks completed successfully" << std::endl;
 
     return EXIT_SUCCESS;
