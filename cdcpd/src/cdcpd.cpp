@@ -888,7 +888,7 @@ point_clouds_from_images(const cv::Mat& depth_image,
                 //     filtered_cloud->push_back(pcl::PointXYZ(x, y, z));
                 // }
 
-                if (mask.at<bool>(v, u))
+                if (mask.at<bool>(v, u) && depth > 0.4)
                 {
                     filtered_cloud->push_back(pcl::PointXYZ(x, y, z));
                 }
@@ -1615,9 +1615,14 @@ CDCPD::Output CDCPD::operator()(
         std::ofstream(fname, std::ofstream::app) << mat.format(np_fmt) << "\n\n";
     };
 
-    Eigen::Matrix3d intrinsics_eigen_tmp;
-    cv::cv2eigen(intrinsics, intrinsics_eigen_tmp);
-    Eigen::Matrix3f intrinsics_eigen = intrinsics_eigen_tmp.cast<float>();
+    // Eigen::Matrix3d intrinsics_eigen_tmp;
+    // cv::cv2eigen(intrinsics, intrinsics_eigen_tmp);
+    // Eigen::Matrix3f intrinsics_eigen = intrinsics_eigen_tmp.cast<float>();
+    Eigen::Matrix3f intrinsics_eigen(3, 3);
+    intrinsics_eigen << 918.359130859375, 0.0, 645.8908081054688,
+                        0.0, 916.265869140625, 354.02392578125,
+                        0.0, 0.0, 1.0;
+    intrinsics_eigen.cast<float>();
 
     Eigen::Vector3f const bounding_box_extend = Vector3f(0.1, 0.1, 0.1);
 
@@ -1666,15 +1671,15 @@ CDCPD::Output CDCPD::operator()(
     std::vector<FixedPoint> pred_fixed_points;
 	cout << "gripper_idx" << endl;
 	cout << gripper_idx << endl << endl;
-    for (int col = 0; col < gripper_idx.cols(); ++col)
-    {
-        FixedPoint pt;
-		pt.template_index = gripper_idx(0, col);
-        pt.position(0) = q_config[col](0, 3);
-        pt.position(1) = q_config[col](1, 3);
-        pt.position(2) = q_config[col](2, 3);
-        pred_fixed_points.push_back(pt);
-    }
+    // for (int col = 0; col < gripper_idx.cols(); ++col)
+    // {
+    //     FixedPoint pt;
+	// 	pt.template_index = gripper_idx(0, col);
+    //     pt.position(0) = q_config[col](0, 3);
+    //     pt.position(1) = q_config[col](1, 3);
+    //     pt.position(2) = q_config[col](2, 3);
+    //     pred_fixed_points.push_back(pt);
+    // }
     Matrix3Xf TY, TY_pred;
     if (is_prediction) {
         // start = std::chrono::system_clock::now(); 
@@ -1788,9 +1793,14 @@ CDCPD::Output CDCPD::operator()(
         std::ofstream(fname, std::ofstream::app) << mat.format(np_fmt) << "\n\n";
     };
 
-    Eigen::Matrix3d intrinsics_eigen_tmp;
-    cv::cv2eigen(intrinsics, intrinsics_eigen_tmp);
-    Eigen::Matrix3f intrinsics_eigen = intrinsics_eigen_tmp.cast<float>();
+    // Eigen::Matrix3d intrinsics_eigen_tmp;
+    // cv::cv2eigen(intrinsics, intrinsics_eigen_tmp);
+    // Eigen::Matrix3f intrinsics_eigen = intrinsics_eigen_tmp.cast<float>();
+    Eigen::Matrix3f intrinsics_eigen(3, 3);
+    intrinsics_eigen << 918.359130859375, 0.0, 645.8908081054688,
+                        0.0, 916.265869140625, 354.02392578125,
+                        0.0, 0.0, 1.0;
+    intrinsics_eigen.cast<float>();
 
     Eigen::Vector3f const bounding_box_extend = Vector3f(0.1, 0.1, 0.1);
 
@@ -1923,18 +1933,18 @@ CDCPD::Output CDCPD::operator()(
     std::vector<FixedPoint> pred_fixed_points;
 	// cout << "gripper_idx" << endl;
 	// cout << gripper_idx << endl << endl;
-	if (model != NULL) {
-   		for (int col = 0; col < gripper_idx.cols(); ++col)
-    	{
-        	FixedPoint pt;
-			pt.template_index = gripper_idx(0, col);
-        	pt.position(0) = q_config_valid[col](0, 3);
-        	pt.position(1) = q_config_valid[col](1, 3);
-        	pt.position(2) = q_config_valid[col](2, 3);
-        	pred_fixed_points.push_back(pt);
-			cout << q_config_valid[col].matrix().block<3,1>(0,3) << endl;
-    	}
-	}
+	// if (model != NULL) {
+   	// 	for (int col = 0; col < gripper_idx.cols(); ++col)
+    // 	{
+    //     	FixedPoint pt;
+	// 		pt.template_index = gripper_idx(0, col);
+    //     	pt.position(0) = q_config_valid[col](0, 3);
+    //     	pt.position(1) = q_config_valid[col](1, 3);
+    //     	pt.position(2) = q_config_valid[col](2, 3);
+    //     	pred_fixed_points.push_back(pt);
+	// 		cout << q_config_valid[col].matrix().block<3,1>(0,3) << endl;
+    // 	}
+	// }
     Matrix3Xf TY, TY_pred;
     if (is_prediction) {
         // start = std::chrono::system_clock::now(); 
@@ -2042,9 +2052,14 @@ CDCPD::Output CDCPD::operator()(
         std::ofstream(fname, std::ofstream::app) << mat.format(np_fmt) << "\n\n";
     };
 
-    Eigen::Matrix3d intrinsics_eigen_tmp;
-    cv::cv2eigen(intrinsics, intrinsics_eigen_tmp);
-    Eigen::Matrix3f intrinsics_eigen = intrinsics_eigen_tmp.cast<float>();
+    // Eigen::Matrix3d intrinsics_eigen_tmp;
+    // cv::cv2eigen(intrinsics, intrinsics_eigen_tmp);
+    // Eigen::Matrix3f intrinsics_eigen = intrinsics_eigen_tmp.cast<float>();
+    Eigen::Matrix3f intrinsics_eigen(3, 3);
+    intrinsics_eigen << 918.359130859375, 0.0, 645.8908081054688,
+                        0.0, 916.265869140625, 354.02392578125,
+                        0.0, 0.0, 1.0;
+    intrinsics_eigen.cast<float>();
 
     Eigen::Vector3f const bounding_box_extend = Vector3f(0.1, 0.1, 0.1);
 
