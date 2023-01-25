@@ -45,6 +45,8 @@
 #include <victor_hardware_interface/Robotiq3FingerStatus_sync.h>
 #include <victor_hardware_interface/Robotiq3FingerStatus.h>
 
+#include <../../trackdlo/cpp/include/trackdlo.h>
+
 using smmap::AllGrippersSinglePose;
 // typedef EigenHelpers::VectorIsometry3d AllGrippersSinglePose;
 
@@ -147,12 +149,11 @@ const double translation_dis_deformability = 1.0;
 const double rotation_deformability = 10.0;
 const int points_on_rope = 40;
 
-CDCPD cdcpd_without_prediction;
+CDCPD cdcpd;
 
 auto [template_vertices, template_edges] = init_template();
 pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud = Matrix3Xf2pcptr(template_vertices);
 pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud_init = Matrix3Xf2pcptr(template_vertices);
-pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud_without_prediction = Matrix3Xf2pcptr(template_vertices);
 // end of init
 
 ros::Publisher original_publisher;
@@ -163,6 +164,7 @@ ros::Publisher output_publisher;
 
 auto frame_id = "camera_color_optical_frame";
 bool use_eval_rope = false;
+std::shared_ptr<ros::NodeHandle> nh_ptr;
 
 sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg) {
     Mat mask_blue, mask_red_1, mask_red_2, mask_red, mask, mask_rgb;
@@ -231,32 +233,95 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
     // ========================================================================
     cv::Matx33d placeholder;
-    
     std::vector<CDCPD::FixedPoint> fixed_points;
-    CDCPD::Output out_without_prediction;
-    out_without_prediction = cdcpd_without_prediction(rgb_image, depth_image, mask, placeholder, template_cloud_without_prediction, false, false, false, 0, fixed_points); 
-    template_cloud_without_prediction = out_without_prediction.gurobi_output;
+    std::vector<bool> is_grasped = {false, true};
+    bool is_interaction = true;
+
+    CDCPD::Output out;
+
+    // // ----- no pred -----
+    // out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, false, false, false, 0, fixed_points); 
+    
+    // ----- predictions -----
+    // tip node position: -0.259614 -0.00676498     0.61341; probably the left one
+    // g_dot has type Eigen::Matrix<double, 6, 1> Vector6d; alias: smmap::AllGrippersSinglePoseDelta
+    // g_config has type EigenHelpers::VectorIsometry3d; alias: smmap::AllGrippersSinglePose
+    AllGrippersSinglePose one_frame_config;
+    AllGrippersSinglePoseDelta one_frame_velocity;
+
+    for (uint32_t g = 0; g < 2; ++g)
+    {
+        Isometry3d one_config;
+        Vector6d one_velocity;
+
+        // for (uint32_t row = 0; row < 4; ++row)
+        // {
+        //     for (uint32_t col = 0; col < 4; ++col)
+        //     {
+        //         one_config(row, col) = double(((g_config->data).data)[num_config*g + row*4 + col]);
+        //     }
+        // }
+
+        one_config(0, 0) = 1.0;
+        one_config(0, 1) = 0.0;
+        one_config(0, 2) = 0.0;
+        one_config(0, 3) = -0.259614;
+
+        one_config(0, 0) = 0.0;
+        one_config(0, 1) = 1.0;
+        one_config(0, 2) = 0.0;
+        one_config(0, 3) = -0.00676498;
+
+        one_config(2, 0) = 0.0;
+        one_config(2, 1) = 0.0;
+        one_config(2, 2) = 1.0;
+        one_config(2, 3) = 0.61341;
+
+        one_config(3, 0) = 0.0;
+        one_config(3, 1) = 0.0;
+        one_config(3, 2) = 0.0;
+        one_config(3, 3) = 1.0;
+
+        for (uint32_t i = 0; i < 6; ++i)
+        {
+            one_velocity(i) = 0.0;
+        }
+
+        one_frame_config.push_back(one_config);
+        one_frame_velocity.push_back(one_velocity);
+    }
+
+    // // ----- pred 0 -----
+    // out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
+
+    // // ----- pred 1 -----
+    // out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 1, fixed_points);
+
+    // ----- pred 2 -----
+    out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
+    
+    template_cloud = out.gurobi_output;
 
     // change frame id
-    out_without_prediction.gurobi_output->header.frame_id = frame_id;
-    out_without_prediction.original_cloud->header.frame_id = frame_id;
-    out_without_prediction.masked_point_cloud->header.frame_id = frame_id;
-    out_without_prediction.downsampled_cloud->header.frame_id = frame_id;
-    out_without_prediction.cpd_predict->header.frame_id = frame_id;
+    out.gurobi_output->header.frame_id = frame_id;
+    out.original_cloud->header.frame_id = frame_id;
+    out.masked_point_cloud->header.frame_id = frame_id;
+    out.downsampled_cloud->header.frame_id = frame_id;
+    out.cpd_predict->header.frame_id = frame_id;
 
     auto time = ros::Time::now();
-    pcl_conversions::toPCL(time, out_without_prediction.original_cloud->header.stamp);
-    pcl_conversions::toPCL(time, out_without_prediction.masked_point_cloud->header.stamp);
-    pcl_conversions::toPCL(time, out_without_prediction.downsampled_cloud->header.stamp);
-    pcl_conversions::toPCL(time, out_without_prediction.gurobi_output->header.stamp);
+    pcl_conversions::toPCL(time, out.original_cloud->header.stamp);
+    pcl_conversions::toPCL(time, out.masked_point_cloud->header.stamp);
+    pcl_conversions::toPCL(time, out.downsampled_cloud->header.stamp);
+    pcl_conversions::toPCL(time, out.gurobi_output->header.stamp);
     // pcl_conversions::toPCL(time, template_cloud_init->header.stamp);
-    pcl_conversions::toPCL(time, out_without_prediction.cpd_predict->header.stamp);
+    pcl_conversions::toPCL(time, out.cpd_predict->header.stamp);
 
-    original_publisher.publish(out_without_prediction.original_cloud);
-    masked_publisher.publish(out_without_prediction.masked_point_cloud);
-    downsampled_publisher.publish(out_without_prediction.downsampled_cloud);
-    pred_publisher.publish(out_without_prediction.cpd_predict);
-    output_publisher.publish(out_without_prediction.gurobi_output);
+    original_publisher.publish(out.original_cloud);
+    masked_publisher.publish(out.masked_point_cloud);
+    downsampled_publisher.publish(out.downsampled_cloud);
+    pred_publisher.publish(out.cpd_predict);
+    output_publisher.publish(out.gurobi_output);
 
     return mask_msg;
 }
@@ -278,17 +343,19 @@ int main(int argc, char **argv) {
         quat[i] = 0.1f;
     }
 
-    cdcpd_without_prediction = CDCPD(template_cloud_without_prediction,
-                                    template_edges,
-                                    false,
-                                    alpha,
-                                    beta,
-                                    lambda,
-                                    k_spring,
-                                    zeta,
-                                    cylinder_data,
-                                    is_sim);
+    cdcpd = CDCPD(template_cloud,
+                    template_edges,
+                    false,
+                    alpha,
+                    beta,
+                    lambda,
+                    k_spring,
+                    zeta,
+                    cylinder_data,
+                    is_sim);
     // end of cdcpd2 init
+
+    nh_ptr = std::make_shared<ros::NodeHandle>(nh);
 
     image_transport::ImageTransport it(nh);
     image_transport::Subscriber opencv_mask_sub = it.subscribe("/mask_with_occlusion", 10, update_opencv_mask);

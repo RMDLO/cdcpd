@@ -829,11 +829,14 @@ point_clouds_from_images(const cv::Mat& depth_image,
     auto unfiltered_iter = unfiltered_cloud->begin();
     #endif
 
+    int counter = 0;
+
     for (int v = 0; v < depth_image.rows; ++v)
     {
         for (int u = 0; u < depth_image.cols; ++u)
         {
             float depth = local_depth_image.at<float>(v, u);
+            counter ++;
 
             // Assume depth = 0 is the standard was to note invalid
             if (std::isfinite(depth))
@@ -848,10 +851,10 @@ point_clouds_from_images(const cv::Mat& depth_image,
                 // |
 
                 // ----- changed to -----
-                double center_x = 645.8908081054688;
-                double center_y = 354.02392578125;
-                double fx = 918.359130859375;
-                double fy = 916.265869140625;
+                float center_x = 645.890;
+                float center_y = 354.023;
+                float fx = 918.359;
+                float fy = 916.265;
 
                 float z = float(depth) * unit_scaling;
 
@@ -867,12 +870,14 @@ point_clouds_from_images(const cv::Mat& depth_image,
                 // Add to unfiltered cloud
                 // ENHANCE: be more concise
                 #ifdef ENTIRE
-                unfiltered_iter->x = x;
-                unfiltered_iter->y = y;
-                unfiltered_iter->z = z;
-                unfiltered_iter->r = rgb_image.at<Vec3b>(v, u)[0];
-                unfiltered_iter->g = rgb_image.at<Vec3b>(v, u)[1];
-                unfiltered_iter->b = rgb_image.at<Vec3b>(v, u)[2];
+                if (fmod(counter, 100) == 0) {
+                    unfiltered_iter->x = x;
+                    unfiltered_iter->y = y;
+                    unfiltered_iter->z = z;
+                    unfiltered_iter->r = rgb_image.at<Vec3b>(v, u)[0];
+                    unfiltered_iter->g = rgb_image.at<Vec3b>(v, u)[1];
+                    unfiltered_iter->b = rgb_image.at<Vec3b>(v, u)[2];
+                }
                 #endif
 
                 Eigen::Array<float, 3, 1> point(x, y, z);
@@ -1646,7 +1651,7 @@ CDCPD::Output CDCPD::operator()(
     pcl::VoxelGrid<pcl::PointXYZ> sor;
     std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
     sor.setInputCloud(cloud);
-    sor.setLeafSize(0.02f, 0.02f, 0.02f);
+    sor.setLeafSize(0.005f, 0.005f, 0.005f);
     sor.filter(*cloud_downsampled);
     std::cout << "Points in fully filtered: " << cloud_downsampled->width << std::endl;
     Matrix3Xf X = cloud_downsampled->getMatrixXfMap().topRows(3);
@@ -1819,7 +1824,7 @@ CDCPD::Output CDCPD::operator()(
     pcl::VoxelGrid<pcl::PointXYZ> sor;
     std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
     sor.setInputCloud(cloud);
-    sor.setLeafSize(0.02f, 0.02f, 0.02f);
+    sor.setLeafSize(0.005f, 0.005f, 0.005f);
     sor.filter(*cloud_downsampled);
     std::cout << "Points in fully filtered: " << cloud_downsampled->width << std::endl;
     Matrix3Xf X = cloud_downsampled->getMatrixXfMap().topRows(3);
@@ -2073,7 +2078,7 @@ CDCPD::Output CDCPD::operator()(
     pcl::VoxelGrid<pcl::PointXYZ> sor;
     std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
     sor.setInputCloud(cloud);
-    sor.setLeafSize(0.02f, 0.02f, 0.02f);
+    sor.setLeafSize(0.005f, 0.005f, 0.005f);
     sor.filter(*cloud_downsampled);
     std::cout << "Points in fully filtered: " << cloud_downsampled->width << std::endl;
     Matrix3Xf X = cloud_downsampled->getMatrixXfMap().topRows(3);
