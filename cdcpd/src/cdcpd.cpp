@@ -1680,6 +1680,11 @@ CDCPD::Output CDCPD::operator()(
     //     pt.position(2) = q_config[col](2, 3);
     //     pred_fixed_points.push_back(pt);
     // }
+
+    // log time
+    std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+    double time_diff;
+
     Matrix3Xf TY, TY_pred;
     if (is_prediction) {
         // start = std::chrono::system_clock::now(); 
@@ -1727,6 +1732,9 @@ CDCPD::Output CDCPD::operator()(
     
 	Matrix3Xf Y_opt = opt(TY, template_edges, pred_fixed_points, self_intersection, interation_constrain);
 	// end = std::chrono::system_clock::now(); std::cout << "opt: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
+
+    time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
 
     // Set the min and max for the box filter for next time
     last_lower_bounding_box = Y_opt.rowwise().minCoeff();
@@ -1946,6 +1954,11 @@ CDCPD::Output CDCPD::operator()(
 	// 		cout << q_config_valid[col].matrix().block<3,1>(0,3) << endl;
     // 	}
 	// }
+
+    // log time
+    std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+    double time_diff;
+
     Matrix3Xf TY, TY_pred;
     if (is_prediction) {
         // start = std::chrono::system_clock::now(); 
@@ -1998,6 +2011,9 @@ CDCPD::Output CDCPD::operator()(
 
     Matrix3Xf Y_opt = opt(TY, template_edges, pred_fixed_points, self_intersection, interation_constrain);
     // end = std::chrono::system_clock::now(); std::cout << "opt: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
+
+    time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
 
     // Set the min and max for the box filter for next time
     last_lower_bounding_box = Y_opt.rowwise().minCoeff();
@@ -2105,6 +2121,10 @@ CDCPD::Output CDCPD::operator()(
     const Matrix3Xf& entire = entire_cloud->getMatrixXfMap().topRows(3);
     #endif
 
+    // log time
+    std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+    double time_diff;
+
     Matrix3Xf TY, TY_pred;
     if (is_prediction) {
 		TY_pred = Y;
@@ -2151,6 +2171,9 @@ CDCPD::Output CDCPD::operator()(
 
     Matrix3Xf Y_opt = opt(TY, template_edges, fixed_points, self_intersection, interation_constrain);
     // end = std::chrono::system_clock::now(); std::cout << "opt: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
+
+    time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
 
     // Set the min and max for the box filter for next time
     last_lower_bounding_box = Y_opt.rowwise().minCoeff();

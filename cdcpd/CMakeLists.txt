@@ -106,7 +106,7 @@ target_link_libraries(cdcpd PRIVATE
 	Qt5::Gui)
 add_dependencies(cdcpd ${catkin_EXPORTED_TARGETS})
 target_compile_definitions(cdcpd PUBLIC ${PCL_DEFINITIONS})
-target_compile_options(cdcpd PRIVATE -Wall -Wextra -Wshadow -g)
+target_compile_options(cdcpd PRIVATE -g) # -Wall -Wextra -Wshadow
 
 # Set to private to not force downstream libraries to link against OpenMP
 # https://cliutils.gitlab.io/modern-cmake/chapters/packages/OpenMP.html
