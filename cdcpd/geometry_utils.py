@@ -3,7 +3,7 @@ import numpy as np
 
 def build_line(length=1.0, num_nodes=50):
     verts = np.zeros((num_nodes, 3), dtype=np.float32)
-    verts[:, 0] = 0.0
+    verts[:, 0] = 0.3
     verts[:, 1] = np.linspace(0-length/2, length/2, num_nodes)
     verts[:, 2] = 0.6
     edges = np.empty((num_nodes - 1, 2), dtype=np.uint32)
