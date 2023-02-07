@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import rospy
 from sensor_msgs.msg import PointCloud2, Image
 import numpy as np
@@ -133,7 +135,7 @@ cdcpd = ConstrainedDeformableCPD(template=template_verts,
                                  cdcpd_params=cdcpd_params)
 
 # initialize ROS publisher
-pub = rospy.Publisher("/cdcpd_tracker/points", PointCloud2, queue_size=10)
+pub = rospy.Publisher("/cdcpd_results_pc", PointCloud2, queue_size=10)
 results_pub = rospy.Publisher("/results", MarkerArray, queue_size=10)
 tracking_img_pub = rospy.Publisher ('/tracking_img', Image, queue_size=10)
 
@@ -215,7 +217,7 @@ def callback(msg: PointCloud2):
 
 
 def main():
-    rospy.init_node('cdcpd_tracker_node')
+    rospy.init_node('cdcpd')
     # rospy.Subscriber("/kinect2_victor_head/qhd/points", PointCloud2, callback, queue_size=2)
     rospy.Subscriber("/camera/depth/color/points", PointCloud2, callback, queue_size=2)
     rospy.Subscriber('/mask_with_occlusion', Image, update_occlusion_mask)
