@@ -79,8 +79,8 @@ using Eigen::VectorXi;
 using pcl::PointXYZ;
 
 // ---------- CONFIG -----------
-int num_of_nodes = 35;
-bool use_eval_rope = false;
+int num_of_nodes = 41;
+bool use_eval_rope = true;
 int gripped_idx = 0;
 
 // cdcpd2 params
@@ -118,9 +118,9 @@ MatrixXf reg (MatrixXf pts, int M, double mu = 0, int max_iter = 50) {
     MatrixXf X = pts.replicate(1, 1);
     MatrixXf Y = MatrixXf::Zero(M, 3);
     for (int i = 0; i < M; i ++) {
-        Y(i, 1) = 0.1 / static_cast<double>(M) * static_cast<double>(i);
+        Y(i, 1) = 0.1 / static_cast<double>(M) * static_cast<double>(i+1);
         Y(i, 0) = 0;
-        Y(i, 2) = 0;
+        Y(i, 2) = 0.63;
     }
     
     int N = X.rows();
@@ -258,9 +258,44 @@ MatrixXf sort_pts (MatrixXf Y_0) {
 ros::Publisher results_pub;
 
 // node color and object color are in rgba format and range from 0-1
-visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf Y, std::string marker_frame, std::string marker_ns, std::vector<float> node_color, std::vector<float> line_color) {
+visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf gripped_pt, MatrixXf Y, std::string marker_frame, std::string marker_ns, std::vector<float> node_color, std::vector<float> line_color) {
     // publish the results as a marker array
     visualization_msgs::MarkerArray results = visualization_msgs::MarkerArray();
+
+    visualization_msgs::Marker cur_node_result = visualization_msgs::Marker();
+    
+    // add header
+    cur_node_result.header.frame_id = marker_frame;
+    // cur_node_result.header.stamp = ros::Time::now();
+    cur_node_result.type = visualization_msgs::Marker::SPHERE;
+    cur_node_result.action = visualization_msgs::Marker::ADD;
+    cur_node_result.ns = marker_ns + std::to_string(99);
+    cur_node_result.id = 99;
+
+    // add position
+    cur_node_result.pose.position.x = gripped_pt(0, 0);
+    cur_node_result.pose.position.y = gripped_pt(0, 1);
+    cur_node_result.pose.position.z = gripped_pt(0, 2);
+
+    // add orientation
+    cur_node_result.pose.orientation.w = 1.0;
+    cur_node_result.pose.orientation.x = 0.0;
+    cur_node_result.pose.orientation.y = 0.0;
+    cur_node_result.pose.orientation.z = 0.0;
+
+    // set scale
+    cur_node_result.scale.x = 0.01;
+    cur_node_result.scale.y = 0.01;
+    cur_node_result.scale.z = 0.01;
+
+    // set color
+    cur_node_result.color.r = 1.0;
+    cur_node_result.color.g = 0.0;
+    cur_node_result.color.b = 0.0;
+    cur_node_result.color.a = 1.0;
+
+    results.markers.push_back(cur_node_result);
+
     for (int i = 0; i < Y.rows(); i ++) {
         visualization_msgs::Marker cur_node_result = visualization_msgs::Marker();
     
@@ -293,13 +328,6 @@ visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf Y, std::string ma
         cur_node_result.color.g = node_color[1];
         cur_node_result.color.b = node_color[2];
         cur_node_result.color.a = node_color[3];
-
-        if (i == gripped_idx) {
-            cur_node_result.color.r = 1.0;
-            cur_node_result.color.g = 0.0;
-            cur_node_result.color.b = 0.0;
-            cur_node_result.color.a = 1.0;
-        }
 
         results.markers.push_back(cur_node_result);
 
@@ -441,7 +469,7 @@ bool initialized = false;
 std::chrono::steady_clock::time_point gripper_time = std::chrono::steady_clock::now();
 
 sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
-    Mat mask_blue, mask_red_1, mask_red_2, mask_red, mask, mask_rgb;
+    Mat mask_blue, mask_red_1, mask_red_2, mask_red, mask_yellow, mask, mask_rgb;
     Mat cur_image_orig = cv_bridge::toCvShare(image_msg, "bgr8")->image;
     cout << "finished first conversion" << std::endl;
     Mat cur_image_hsv;
@@ -465,6 +493,9 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     std::vector<int> lower_red_2 = {0, 60, 40};
     std::vector<int> upper_red_2 = {10, 255, 255};
 
+    std::vector<int> lower_yellow = {15, 100, 80};
+    std::vector<int> upper_yellow = {40, 255, 255};
+
     Mat mask_without_occlusion_block;
 
     if (use_eval_rope) {
@@ -477,8 +508,13 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
         // combine red mask
         cv::bitwise_or(mask_red_1, mask_red_2, mask_red);
+
+        // filter yellow
+        cv::inRange(cur_image_hsv, cv::Scalar(lower_yellow[0], lower_yellow[1], lower_yellow[2]), cv::Scalar(upper_yellow[0], upper_yellow[1], upper_yellow[2]), mask_yellow);
+
         // combine overall mask
         cv::bitwise_or(mask_red, mask_blue, mask_without_occlusion_block);
+        cv::bitwise_or(mask_yellow, mask_without_occlusion_block, mask_without_occlusion_block);
     }
     else {
         // filter blue
@@ -527,7 +563,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     pcl::PointCloud<pcl::PointXYZRGB> cur_nodes_xyz;
     pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz;
 
-    pcl::PointCloud<pcl::PointXYZRGB> cur_red_xyz;
+    pcl::PointCloud<pcl::PointXYZRGB> cur_yellow_xyz;
 
     // filter point cloud from mask
     for (int i = 0; i < cloud->height; i ++) {
@@ -535,11 +571,16 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
             if (mask.at<uchar>(i, j) != 0) {
                 cur_pc_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
             }
-            if (mask_red.at<uchar>(i, j) != 0) {
-                cur_red_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
+            if (mask_yellow.at<uchar>(i, j) != 0) {
+                cur_yellow_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
             }
         }
     }
+
+    MatrixXf cur_yellow_pts = cur_yellow_xyz.getMatrixXfMap().topRows(3).transpose();
+    std::cout << cur_yellow_pts.rows() << std::endl;
+    MatrixXf head_node = reg(cur_yellow_pts, 1, 0.1, 100);
+    std::cout << head_node << std::endl;
 
     // convert back to pointcloud2 message
     pcl::toPCLPointCloud2(cur_pc_xyz, *cur_pc);
@@ -563,8 +604,8 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
         std::cout << "found Y" << std::endl;
 
-        gripper_pt = {Y_gmm(gripped_idx, 0), Y_gmm(gripped_idx, 1), Y_gmm(gripped_idx, 2)};
-        last_gripper_pt = {Y_gmm(gripped_idx, 0), Y_gmm(gripped_idx, 1), Y_gmm(gripped_idx, 2)};
+        gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
+        last_gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
 
         auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
         template_vertices = template_vertices_.replicate(1, 1);
@@ -681,6 +722,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         one_frame_velocity.push_back(one_velocity);
     }
 
+    // update gripper point location
+    for (int i = 0; i < gripper_pt.size(); i ++) {
+        last_gripper_pt[i] = gripper_pt[i];
+    }
+    gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
+
     // log time
     gripper_time = std::chrono::steady_clock::now();
 
@@ -703,12 +750,6 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     
     template_cloud = out.gurobi_output;
 
-    // update gripper point location
-    for (int i = 0; i < gripper_pt.size(); i ++) {
-        last_gripper_pt[i] = gripper_pt[i];
-    }
-    gripper_pt = {template_cloud->points[gripped_idx].x, template_cloud->points[gripped_idx].y, template_cloud->points[gripped_idx].z};
-
     // convert to MatrixXf
     MatrixXf Y = MatrixXf::Zero(num_of_nodes, 3);
     for (int i = 0; i < num_of_nodes; i ++) {
@@ -717,7 +758,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         Y(i, 2) = template_cloud->points[i].z;
     }
     // publish marker array
-    visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
+    visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(head_node, Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
     results_pub.publish(results);
 
     double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();

@@ -1549,6 +1549,8 @@ CDCPD::Output CDCPD::operator()(
     //             last_lower_bounding_box - bounding_box_extend,
     //             last_upper_bounding_box + bounding_box_extend,
 	// 			is_sim);
+    pcl::PointCloud<pcl::PointXYZRGB> cloud;
+    pcl::PointCloud<pcl::PointXYZRGB> entire_cloud;
     pcl::copyPointCloud(downsampled_xyz, cloud);
     pcl::copyPointCloud(downsampled_xyz, entire_cloud);
     std::cout << "Points in filtered: (" << cloud.height << " x " << cloud.width << ")\n";
@@ -1738,6 +1740,8 @@ CDCPD::Output CDCPD::operator()(
     //             last_lower_bounding_box - bounding_box_extend,
     //             last_upper_bounding_box + bounding_box_extend,
 	// 			is_sim);
+    pcl::PointCloud<pcl::PointXYZRGB> cloud;
+    pcl::PointCloud<pcl::PointXYZRGB> entire_cloud;
     pcl::copyPointCloud(downsampled_xyz, cloud);
     pcl::copyPointCloud(downsampled_xyz, entire_cloud);
     std::cout << "Points in filtered: (" << cloud.height << " x " << cloud.width << ")\n";
@@ -2008,6 +2012,8 @@ CDCPD::Output CDCPD::operator()(
     //             last_lower_bounding_box - bounding_box_extend,
     //             last_upper_bounding_box + bounding_box_extend,
 	// 			is_sim);
+    pcl::PointCloud<pcl::PointXYZRGB> cloud;
+    pcl::PointCloud<pcl::PointXYZRGB> entire_cloud;
     pcl::copyPointCloud(downsampled_xyz, cloud);
     pcl::copyPointCloud(downsampled_xyz, entire_cloud);
     std::cout << "Points in filtered: (" << cloud.height << " x " << cloud.width << ")\n";
