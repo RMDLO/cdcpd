@@ -82,6 +82,19 @@ using pcl::PointXYZ;
 int num_of_nodes = 35;
 bool use_eval_rope = false;
 int gripped_idx = 0;
+
+// cdcpd2 params
+const double alpha = 0.5;
+const double lambda = 1.0;
+const float zeta = 2.0;
+const double k_spring = 100.0;
+const double beta = 1.0;
+const bool is_sim = false;
+const bool is_rope = true;
+const bool is_gripper_info = true;	
+const double translation_dir_deformability = 1.0;
+const double translation_dis_deformability = 1.0;
+const double rotation_deformability = 10.0;
 // ---------- END OF CONFIG -----------
 
 template <typename T>
@@ -403,20 +416,6 @@ std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_gmm(MatrixXf Y_gmm)
     return std::make_tuple(vertices, edges);
 }
 
-// initialize cdcpd2
-const double alpha = 0.5;
-const double lambda = 1.0;
-const float zeta = 100.0;
-const double k_spring = 100.0;
-const double beta = 1.0;
-const bool is_sim = false;
-const bool is_rope = true;
-const bool is_gripper_info = true;	
-const double translation_dir_deformability = 1.0;
-const double translation_dis_deformability = 1.0;
-const double rotation_deformability = 10.0;
-// const int points_on_rope = 40;
-
 CDCPD cdcpd;
 
 // auto [template_vertices, template_edges] = init_template_hardcoded();
@@ -439,6 +438,8 @@ std::shared_ptr<ros::NodeHandle> nh_ptr;
 
 // ---------- CALLBACK ----------
 bool initialized = false;
+std::chrono::steady_clock::time_point gripper_time = std::chrono::steady_clock::now();
+
 sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
     Mat mask_blue, mask_red_1, mask_red_2, mask_red, mask, mask_rgb;
     Mat cur_image_orig = cv_bridge::toCvShare(image_msg, "bgr8")->image;
@@ -652,9 +653,16 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         one_config(3, 2) = 0.0;
         one_config(3, 3) = 1.0;
 
+        // log time
+        double gripper_time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - gripper_time).count();
+
         for (uint32_t i = 0; i < 6; ++i) {
             if (i < 3) {
-                one_velocity(i) = gripper_pt[i] - last_gripper_pt[i];
+                one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]); // / (gripper_time_diff / 1000.0);
+                
+                std::cout << gripper_time_diff/1000.0 << std::endl;
+                std::cout << "orig vel = " << gripper_pt[i] - last_gripper_pt[i] << std::endl;
+                std::cout << "scaled vel = " << (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0) << std::endl;
             }
             else {
                 one_velocity(i) = 0;
@@ -668,7 +676,15 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     }
 
     // log time
+    gripper_time = std::chrono::steady_clock::now();
+
+    // log time
     std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+
+    // pred_choice:
+	// 	- 0: no movement
+	// 	- 1: Dmitry's prediction
+	//  - 2: Mengyao's prediction
 
     // // ----- pred 0 -----
     // out = cdcpd(rgb_image, depth_image, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
