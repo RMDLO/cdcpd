@@ -121,40 +121,46 @@ std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
 }
 
 // hard coded
-std::vector<double> gripper_pt = {0.285294, 0.0127347, 0.632526};
+std::vector<double> gripper_pt = {0.268377, -0.124886, 0.630706};
+std::vector<double> last_gripper_pt = {0.268377, -0.124886, 0.630706};
 std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_hardcoded()
 {
-    MatrixXf gmm_Y(30, 3);
-    gmm_Y << 0.285294, 0.0127347, 0.632526,
-            0.266973, 0.00959517, 0.632526,
-            0.257377, 0.00638234, 0.632526,
-            0.24186, 0.00224015, 0.632526,
-            0.220945, -0.0026021, 0.632526,
-            0.200226, -0.00483629, 0.632526,
-            0.182535, -0.00207648, 0.632526,
-            0.165501, 0.00362017, 0.632526,
-            0.148284, 0.0072165, 0.632526,
-            0.133943, 0.012595, 0.632526,
-            0.116902, 0.0210439, 0.632526,
-            0.102139, 0.0310499, 0.632526,
-            0.0882692, 0.039481, 0.632526,
-            0.0748471, 0.0461338, 0.632526,
-            0.0628463, 0.0528506, 0.632526,
-            0.0491495, 0.0577945, 0.632526,
-            0.0305501, 0.0641767, 0.632526,
-            0.00792847, 0.0699127, 0.632526,
-            -0.0151124, 0.0698673, 0.632526,
-            -0.035358, 0.0664779, 0.632526,
-            -0.0551847, 0.0624832, 0.632526,
-            -0.0747854, 0.0554312, 0.632526,
-            -0.0932287, 0.0478233, 0.632526,
-            -0.108415, 0.0435355, 0.632526,
-            -0.124954, 0.0416542, 0.632526,
-            -0.148469, 0.0402912, 0.632526,
-            -0.174403, 0.0420593, 0.632526,
-            -0.194335, 0.0456703, 0.632526,
-            -0.212603, 0.0539975, 0.632526,
-            -0.2305, 0.0610373, 0.632526;
+    MatrixXf gmm_Y(35, 3);
+    gmm_Y << 0.268377, -0.124886, 0.630706,
+                0.247277, -0.124805, 0.632229,
+                0.223923, -0.124903, 0.632156,
+                0.201773, -0.124571, 0.630938,
+                0.183754, -0.122516, 0.630306,
+                0.169436, -0.120971, 0.62973,
+                0.152277, -0.118236, 0.625117,
+                0.138635, -0.114352, 0.623672,
+                0.125244, -0.110469, 0.623872,
+                0.113181, -0.107071, 0.624976,
+                0.0954561, -0.102458, 0.62486,
+                0.0768889, -0.0990558, 0.624558,
+                0.0630463, -0.0966933, 0.622633,
+                0.0464305, -0.0931258, 0.621252,
+                0.0299939, -0.0898664, 0.619683,
+                0.00994098, -0.0892567, 0.621941,
+                -0.00748003, -0.0894387, 0.622552,
+                -0.0253184, -0.089625, 0.620576,
+                -0.0422711, -0.0919234, 0.621363,
+                -0.0554089, -0.0940729, 0.619449,
+                -0.0709265, -0.0965604, 0.620223,
+                -0.0879523, -0.101123, 0.62019,
+                -0.100358, -0.102079, 0.618522,
+                -0.115624, -0.104625, 0.618057,
+                -0.129764, -0.103671, 0.61819,
+                -0.14154, -0.10107, 0.615288,
+                -0.153523, -0.0989892, 0.615061,
+                -0.167704, -0.0945824, 0.614862,
+                -0.17754, -0.0894167, 0.614538,
+                -0.1892, -0.0843427, 0.615172,
+                -0.201214, -0.0769092, 0.614344,
+                -0.214165, -0.0727566, 0.610789,
+                -0.226917, -0.0669603, 0.609498,
+                -0.239827, -0.0635462, 0.609425,
+                -0.250812, -0.0637666, 0.611109;
 
 	int points_on_rope = gmm_Y.rows();
 
@@ -329,14 +335,23 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         one_config(3, 2) = 0.0;
         one_config(3, 3) = 1.0;
 
-        for (uint32_t i = 0; i < 6; ++i)
-        {
-            one_velocity(i) = 0.00001;
+        for (uint32_t i = 0; i < 6; ++i) {
+            if (i < 3) {
+                one_velocity(i) = gripper_pt[i] - last_gripper_pt[i];
+            }
+            else {
+                one_velocity(i) = 0;
+            }
         }
+
+        std::cout << "one_velocity: " << one_velocity << std::endl;
 
         one_frame_config.push_back(one_config);
         one_frame_velocity.push_back(one_velocity);
     }
+
+    // log time
+    std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 
     // // ----- pred 0 -----
     // out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
@@ -348,6 +363,15 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
     
     template_cloud = out.gurobi_output;
+
+    // update gripper point location
+    for (int i = 0; i < gripper_pt.size(); i ++) {
+        last_gripper_pt[i] = gripper_pt[i];
+    }
+    gripper_pt = {template_cloud->points[0].x, template_cloud->points[0].y, template_cloud->points[0].z};
+
+    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    ROS_WARN_STREAM("Total callback time difference: " + std::to_string(time_diff) + " ms");
 
     // change frame id
     out.gurobi_output->header.frame_id = frame_id;
