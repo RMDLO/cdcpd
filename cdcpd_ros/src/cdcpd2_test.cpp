@@ -22,6 +22,7 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/point_cloud.h>
+#include <pcl/filters/voxel_grid.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/simple_filter.h>
 #include <message_filters/time_synchronizer.h>
@@ -77,6 +78,154 @@ using Eigen::VectorXd;
 using Eigen::VectorXi;
 using pcl::PointXYZ;
 
+// ---------- CONFIG -----------
+int num_of_nodes = 35;
+bool use_eval_rope = false;
+int gripped_idx = 0;
+// ---------- END OF CONFIG -----------
+
+MatrixXf reg (MatrixXf pts, int M, double mu = 0, int max_iter = 50) {
+    // initial guess
+    MatrixXf X = pts.replicate(1, 1);
+    MatrixXf Y = MatrixXf::Zero(M, 3);
+    for (int i = 0; i < M; i ++) {
+        Y(i, 1) = 0.1 / static_cast<double>(M) * static_cast<double>(i);
+        Y(i, 0) = 0;
+        Y(i, 2) = 0;
+    }
+    
+    int N = X.rows();
+    int D = 3;
+
+    // diff_xy should be a (M * N) matrix
+    MatrixXf diff_xy = MatrixXf::Zero(M, N);
+    for (int i = 0; i < M; i ++) {
+        for (int j = 0; j < N; j ++) {
+            diff_xy(i, j) = (Y.row(i) - X.row(j)).squaredNorm();
+        }
+    }
+
+    // initialize sigma2
+    double sigma2 = diff_xy.sum() / static_cast<double>(D * M * N);
+
+    for (int it = 0; it < max_iter; it ++) {
+        // update diff_xy
+        for (int i = 0; i < M; i ++) {
+            for (int j = 0; j < N; j ++) {
+                diff_xy(i, j) = (Y.row(i) - X.row(j)).squaredNorm();
+            }
+        }
+
+        MatrixXf P = (-0.5 * diff_xy / sigma2).array().exp();
+        MatrixXf P_stored = P.replicate(1, 1);
+        double c = pow((2 * M_PI * sigma2), static_cast<double>(D)/2) * mu / (1 - mu) * static_cast<double>(M)/N;
+        P = P.array().rowwise() / (P.colwise().sum().array() + c);
+
+        MatrixXf Pt1 = P.colwise().sum(); 
+        MatrixXf P1 = P.rowwise().sum();
+        double Np = P1.sum();
+        MatrixXf PX = P * X;
+
+        MatrixXf P1_expanded = MatrixXf::Zero(M, D);
+        P1_expanded.col(0) = P1;
+        P1_expanded.col(1) = P1;
+        P1_expanded.col(2) = P1;
+
+        Y = PX.cwiseQuotient(P1_expanded);
+
+        double numerator = 0;
+        double denominator = 0;
+
+        for (int m = 0; m < M; m ++) {
+            for (int n = 0; n < N; n ++) {
+                numerator += P(m, n)*diff_xy(m, n);
+                denominator += P(m, n)*D;
+            }
+        }
+
+        sigma2 = numerator / denominator;
+    }
+
+    return Y;
+}
+
+MatrixXf sort_pts (MatrixXf Y_0) {
+    int N = Y_0.rows();
+    MatrixXf Y_0_sorted = MatrixXf::Zero(N, 3);
+    std::vector<MatrixXf> Y_0_sorted_vec = {};
+    std::vector<bool> selected_node(N, false);
+    selected_node[0] = true;
+    int last_visited_b = 0;
+
+    MatrixXf G = MatrixXf::Zero(N, N);
+    for (int i = 0; i < N; i ++) {
+        for (int j = 0; j < N; j ++) {
+            G(i, j) = (Y_0.row(i) - Y_0.row(j)).squaredNorm();
+        }
+    }
+
+    int reverse = 0;
+    int counter = 0;
+    int reverse_on = 0;
+    int insertion_counter = 0;
+
+    while (counter < N-1) {
+        double minimum = INFINITY;
+        int a = 0;
+        int b = 0;
+
+        for (int m = 0; m < N; m ++) {
+            if (selected_node[m] == true) {
+                for (int n = 0; n < N; n ++) {
+                    if ((!selected_node[n]) && (G(m, n) != 0.0)) {
+                        if (minimum > G(m, n)) {
+                            minimum = G(m, n);
+                            a = m;
+                            b = n;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (counter == 0) {
+            Y_0_sorted_vec.push_back(Y_0.row(a));
+            Y_0_sorted_vec.push_back(Y_0.row(b));
+        }
+        else {
+            if (last_visited_b != a) {
+                reverse += 1;
+                reverse_on = a;
+                insertion_counter = 1;
+            }
+            
+            if (reverse % 2 == 1) {
+                auto it = find(Y_0_sorted_vec.begin(), Y_0_sorted_vec.end(), Y_0.row(a));
+                Y_0_sorted_vec.insert(it, Y_0.row(b));
+            }
+            else if (reverse != 0) {
+                auto it = find(Y_0_sorted_vec.begin(), Y_0_sorted_vec.end(), Y_0.row(reverse_on));
+                Y_0_sorted_vec.insert(it + insertion_counter, Y_0.row(b));
+                insertion_counter += 1;
+            }
+            else {
+                Y_0_sorted_vec.push_back(Y_0.row(b));
+            }
+        }
+
+        last_visited_b = b;
+        selected_node[b] = true;
+        counter += 1;
+    }
+
+    // copy to Y_0_sorted
+    for (int i = 0; i < N; i ++) {
+        Y_0_sorted.row(i) = Y_0_sorted_vec[i];
+    }
+
+    return Y_0_sorted;
+}
+
 Mat occlusion_mask;
 bool updated_opencv_mask = false;
 void update_opencv_mask (const sensor_msgs::ImageConstPtr& opencv_mask_msg) {
@@ -96,75 +245,38 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr Matrix3Xf2pcptr(const Eigen::Matrix3X
 	return template_cloud;
 }
 
-std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
-{
-	float left_x = -0.5f; float left_y = 0.2f; float left_z = 0.6f; float right_x = 0.44f; float right_y = 0.2f; float right_z = 0.6f;
+// std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
+// {
+// 	float left_x = -0.5f; float left_y = 0.2f; float left_z = 0.6f; float right_x = 0.44f; float right_y = 0.2f; float right_z = 0.6f;
     
-	int points_on_rope = 30;
+// 	int points_on_rope = 30;
 
-    MatrixXf vertices(3, points_on_rope); // Y^0 in the paper
-    vertices.setZero();
-    vertices.row(0).setLinSpaced(points_on_rope, left_x, right_x);
-    vertices.row(1).setLinSpaced(points_on_rope, left_y, right_y);
-    vertices.row(2).setLinSpaced(points_on_rope, left_z, right_z);
+//     MatrixXf vertices(3, points_on_rope); // Y^0 in the paper
+//     vertices.setZero();
+//     vertices.row(0).setLinSpaced(points_on_rope, left_x, right_x);
+//     vertices.row(1).setLinSpaced(points_on_rope, left_y, right_y);
+//     vertices.row(2).setLinSpaced(points_on_rope, left_z, right_z);
 
-    MatrixXi edges(2, points_on_rope - 1);
-    edges(0, 0) = 0;
-    edges(1, edges.cols() - 1) = points_on_rope - 1;
-    for (int i = 1; i <= edges.cols() - 1; ++i)
-    {
-        edges(0, i) = i;
-        edges(1, i - 1) = i;
-    }
+//     MatrixXi edges(2, points_on_rope - 1);
+//     edges(0, 0) = 0;
+//     edges(1, edges.cols() - 1) = points_on_rope - 1;
+//     for (int i = 1; i <= edges.cols() - 1; ++i)
+//     {
+//         edges(0, i) = i;
+//         edges(1, i - 1) = i;
+//     }
 
-    return std::make_tuple(vertices, edges);
-}
+//     return std::make_tuple(vertices, edges);
+// }
 
-// hard coded
-std::vector<double> gripper_pt = {0.268377, -0.124886, 0.630706};
-std::vector<double> last_gripper_pt = {0.268377, -0.124886, 0.630706};
-std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_hardcoded()
+std::vector<double> gripper_pt;
+std::vector<double> last_gripper_pt;
+
+std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_gmm(MatrixXf Y_gmm)
 {
-    MatrixXf gmm_Y(35, 3);
-    gmm_Y << 0.268377, -0.124886, 0.630706,
-                0.247277, -0.124805, 0.632229,
-                0.223923, -0.124903, 0.632156,
-                0.201773, -0.124571, 0.630938,
-                0.183754, -0.122516, 0.630306,
-                0.169436, -0.120971, 0.62973,
-                0.152277, -0.118236, 0.625117,
-                0.138635, -0.114352, 0.623672,
-                0.125244, -0.110469, 0.623872,
-                0.113181, -0.107071, 0.624976,
-                0.0954561, -0.102458, 0.62486,
-                0.0768889, -0.0990558, 0.624558,
-                0.0630463, -0.0966933, 0.622633,
-                0.0464305, -0.0931258, 0.621252,
-                0.0299939, -0.0898664, 0.619683,
-                0.00994098, -0.0892567, 0.621941,
-                -0.00748003, -0.0894387, 0.622552,
-                -0.0253184, -0.089625, 0.620576,
-                -0.0422711, -0.0919234, 0.621363,
-                -0.0554089, -0.0940729, 0.619449,
-                -0.0709265, -0.0965604, 0.620223,
-                -0.0879523, -0.101123, 0.62019,
-                -0.100358, -0.102079, 0.618522,
-                -0.115624, -0.104625, 0.618057,
-                -0.129764, -0.103671, 0.61819,
-                -0.14154, -0.10107, 0.615288,
-                -0.153523, -0.0989892, 0.615061,
-                -0.167704, -0.0945824, 0.614862,
-                -0.17754, -0.0894167, 0.614538,
-                -0.1892, -0.0843427, 0.615172,
-                -0.201214, -0.0769092, 0.614344,
-                -0.214165, -0.0727566, 0.610789,
-                -0.226917, -0.0669603, 0.609498,
-                -0.239827, -0.0635462, 0.609425,
-                -0.250812, -0.0637666, 0.611109;
+	int points_on_rope = Y_gmm.rows();
 
-	int points_on_rope = gmm_Y.rows();
-
-    MatrixXf vertices = gmm_Y.transpose().replicate(1, 1);
+    MatrixXf vertices = Y_gmm.transpose().replicate(1, 1);
 
     MatrixXi edges(2, points_on_rope - 1);
     edges(0, 0) = 0;
@@ -196,9 +308,13 @@ const double rotation_deformability = 10.0;
 
 CDCPD cdcpd;
 
-auto [template_vertices, template_edges] = init_template_hardcoded();
-pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud = Matrix3Xf2pcptr(template_vertices);
-pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud_init = Matrix3Xf2pcptr(template_vertices);
+// auto [template_vertices, template_edges] = init_template_hardcoded();
+// pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud = Matrix3Xf2pcptr(template_vertices);
+// pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud_init = Matrix3Xf2pcptr(template_vertices);
+Eigen::Matrix3Xf template_vertices;
+Eigen::Matrix2Xi template_edges;
+pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud;
+pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud_init;
 // end of init
 
 ros::Publisher original_publisher;
@@ -208,9 +324,10 @@ ros::Publisher pred_publisher;
 ros::Publisher output_publisher;
 
 auto frame_id = "camera_color_optical_frame";
-bool use_eval_rope = false;
 std::shared_ptr<ros::NodeHandle> nh_ptr;
 
+// ---------- CALLBACK ----------
+bool initialized = false;
 sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
     Mat mask_blue, mask_red_1, mask_red_2, mask_red, mask, mask_rgb;
     Mat cur_image_orig = cv_bridge::toCvShare(image_msg, "bgr8")->image;
@@ -275,6 +392,95 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     // publish mask
     sensor_msgs::ImagePtr mask_msg = nullptr;
     mask_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", mask_rgb).toImageMsg();
+
+    if (!initialized) {
+        pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
+
+        // Convert to PCL data type
+        pcl_conversions::toPCL(*pc_msg, *cloud);   // cloud is 720*1280 (height*width) now, however is a ros pointcloud2 message. 
+                                               // see message definition here: http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/PointCloud2.html
+
+        if (cloud->width == 0 && cloud->height == 0) {
+            ROS_ERROR("empty point cloud!");
+            return mask_msg;
+        }
+
+        std::cout << "non empty point cloud" << std::endl;
+
+        // convert to xyz point
+        pcl::PointCloud<pcl::PointXYZRGB> cloud_xyz;
+        pcl::fromPCLPointCloud2(*cloud, cloud_xyz);
+        // now create objects for cur_pc
+        pcl::PCLPointCloud2* cur_pc = new pcl::PCLPointCloud2;
+        pcl::PointCloud<pcl::PointXYZRGB> cur_pc_xyz;
+        pcl::PointCloud<pcl::PointXYZRGB> cur_nodes_xyz;
+        pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz;
+
+        // filter point cloud from mask
+        for (int i = 0; i < cloud->height; i ++) {
+            for (int j = 0; j < cloud->width; j ++) {
+                if (mask.at<uchar>(i, j) != 0) {
+                    cur_pc_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
+                }
+            }
+        }
+
+        // convert back to pointcloud2 message
+        pcl::toPCLPointCloud2(cur_pc_xyz, *cur_pc);
+        // Perform downsampling
+        pcl::PCLPointCloud2ConstPtr cloudPtr(cur_pc);
+        pcl::PCLPointCloud2 cur_pc_downsampled;
+        pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
+        sor.setInputCloud (cloudPtr);
+        sor.setLeafSize (0.005, 0.005, 0.005);
+        sor.filter (cur_pc_downsampled);
+
+        pcl::fromPCLPointCloud2(cur_pc_downsampled, downsampled_xyz);
+        MatrixXf X = downsampled_xyz.getMatrixXfMap().topRows(3).transpose();
+
+        std::cout << "found X" << std::endl;
+
+        MatrixXf Y_gmm = reg(X, num_of_nodes, 0.05, 100);
+        Y_gmm = sort_pts(Y_gmm);
+
+        std::cout << "found Y" << std::endl;
+
+        gripper_pt = {Y_gmm(gripped_idx, 0), Y_gmm(gripped_idx, 1), Y_gmm(gripped_idx, 2)};
+        last_gripper_pt = {Y_gmm(gripped_idx, 0), Y_gmm(gripped_idx, 1), Y_gmm(gripped_idx, 2)};
+
+        auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
+        template_vertices = template_vertices_.replicate(1, 1);
+        template_edges = template_edges_.replicate(1, 1);
+        template_cloud = Matrix3Xf2pcptr(template_vertices);
+        template_cloud_init = Matrix3Xf2pcptr(template_vertices);
+
+        // cdcpd2 init
+        std::vector<float> cylinder_data(8);
+        std::vector<float> quat(4);
+        // Matrix3Xf init_points(3, 3);
+
+        for (int i = 0; i < 8; i++) {
+            cylinder_data[i] = 0.1f;
+        }
+
+        for (int i = 0; i < 4; i++) {
+            quat[i] = 1.4f;
+        }
+
+        cdcpd = CDCPD(template_cloud,
+                    template_edges,
+                    false,
+                    alpha,
+                    beta,
+                    lambda,
+                    k_spring,
+                    zeta,
+                    cylinder_data,
+                    is_sim);
+        // end of cdcpd2 init
+
+        initialized = true;
+    }
 
     // ========================================================================
     cv::Matx33d placeholder;
@@ -368,7 +574,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     for (int i = 0; i < gripper_pt.size(); i ++) {
         last_gripper_pt[i] = gripper_pt[i];
     }
-    gripper_pt = {template_cloud->points[0].x, template_cloud->points[0].y, template_cloud->points[0].z};
+    gripper_pt = {template_cloud->points[gripped_idx].x, template_cloud->points[gripped_idx].y, template_cloud->points[gripped_idx].z};
 
     double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
     ROS_WARN_STREAM("Total callback time difference: " + std::to_string(time_diff) + " ms");
@@ -400,31 +606,6 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 int main(int argc, char **argv) {
     ros::init(argc, argv, "cdcpd2_test");
     ros::NodeHandle nh;
-
-    // cdcpd2 init
-    std::vector<float> cylinder_data(8);
-    std::vector<float> quat(4);
-    // Matrix3Xf init_points(3, 3);
-
-    for (int i = 0; i < 8; i++) {
-        cylinder_data[i] = 0.1f;
-    }
-
-    for (int i = 0; i < 4; i++) {
-        quat[i] = 1.4f;
-    }
-
-    cdcpd = CDCPD(template_cloud,
-                    template_edges,
-                    false,
-                    alpha,
-                    beta,
-                    lambda,
-                    k_spring,
-                    zeta,
-                    cylinder_data,
-                    is_sim);
-    // end of cdcpd2 init
 
     nh_ptr = std::make_shared<ros::NodeHandle>(nh);
 
