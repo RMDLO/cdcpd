@@ -84,6 +84,22 @@ bool use_eval_rope = false;
 int gripped_idx = 0;
 // ---------- END OF CONFIG -----------
 
+template <typename T>
+void print_1d_vector (std::vector<T> vec) {
+    for (int i = 0; i < vec.size(); i ++) {
+        std::cout << vec[i] << " ";
+    }
+    std::cout << std::endl;
+}
+
+double pt2pt_dis_sq (MatrixXf pt1, MatrixXf pt2) {
+    return (pt1 - pt2).rowwise().squaredNorm().sum();
+}
+
+double pt2pt_dis (MatrixXf pt1, MatrixXf pt2) {
+    return (pt1 - pt2).rowwise().norm().sum();
+}
+
 MatrixXf reg (MatrixXf pts, int M, double mu = 0, int max_iter = 50) {
     // initial guess
     MatrixXf X = pts.replicate(1, 1);
@@ -224,6 +240,101 @@ MatrixXf sort_pts (MatrixXf Y_0) {
     }
 
     return Y_0_sorted;
+}
+
+ros::Publisher results_pub;
+
+// node color and object color are in rgba format and range from 0-1
+visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf Y, std::string marker_frame, std::string marker_ns, std::vector<float> node_color, std::vector<float> line_color) {
+    // publish the results as a marker array
+    visualization_msgs::MarkerArray results = visualization_msgs::MarkerArray();
+    for (int i = 0; i < Y.rows(); i ++) {
+        visualization_msgs::Marker cur_node_result = visualization_msgs::Marker();
+    
+        // add header
+        cur_node_result.header.frame_id = marker_frame;
+        // cur_node_result.header.stamp = ros::Time::now();
+        cur_node_result.type = visualization_msgs::Marker::SPHERE;
+        cur_node_result.action = visualization_msgs::Marker::ADD;
+        cur_node_result.ns = marker_ns + std::to_string(i);
+        cur_node_result.id = i;
+
+        // add position
+        cur_node_result.pose.position.x = Y(i, 0);
+        cur_node_result.pose.position.y = Y(i, 1);
+        cur_node_result.pose.position.z = Y(i, 2);
+
+        // add orientation
+        cur_node_result.pose.orientation.w = 1.0;
+        cur_node_result.pose.orientation.x = 0.0;
+        cur_node_result.pose.orientation.y = 0.0;
+        cur_node_result.pose.orientation.z = 0.0;
+
+        // set scale
+        cur_node_result.scale.x = 0.01;
+        cur_node_result.scale.y = 0.01;
+        cur_node_result.scale.z = 0.01;
+
+        // set color
+        cur_node_result.color.r = node_color[0];
+        cur_node_result.color.g = node_color[1];
+        cur_node_result.color.b = node_color[2];
+        cur_node_result.color.a = node_color[3];
+
+        if (i == gripped_idx) {
+            cur_node_result.color.r = 1.0;
+            cur_node_result.color.g = 0.0;
+            cur_node_result.color.b = 0.0;
+            cur_node_result.color.a = 1.0;
+        }
+
+        results.markers.push_back(cur_node_result);
+
+        // don't add line if at the last node
+        if (i == Y.rows()-1) {
+            break;
+        }
+
+        visualization_msgs::Marker cur_line_result = visualization_msgs::Marker();
+
+        // add header
+        cur_line_result.header.frame_id = "camera_color_optical_frame";
+        cur_line_result.type = visualization_msgs::Marker::CYLINDER;
+        cur_line_result.action = visualization_msgs::Marker::ADD;
+        cur_line_result.ns = "line_results" + std::to_string(i);
+        cur_line_result.id = i;
+
+        // add position
+        cur_line_result.pose.position.x = (Y(i, 0) + Y(i+1, 0)) / 2.0;
+        cur_line_result.pose.position.y = (Y(i, 1) + Y(i+1, 1)) / 2.0;
+        cur_line_result.pose.position.z = (Y(i, 2) + Y(i+1, 2)) / 2.0;
+
+        // add orientation
+        Eigen::Quaternionf q;
+        Eigen::Vector3f vec1(0.0, 0.0, 1.0);
+        Eigen::Vector3f vec2(Y(i+1, 0) - Y(i, 0), Y(i+1, 1) - Y(i, 1), Y(i+1, 2) - Y(i, 2));
+        q.setFromTwoVectors(vec1, vec2);
+
+        cur_line_result.pose.orientation.w = q.w();
+        cur_line_result.pose.orientation.x = q.x();
+        cur_line_result.pose.orientation.y = q.y();
+        cur_line_result.pose.orientation.z = q.z();
+
+        // set scale
+        cur_line_result.scale.x = 0.005;
+        cur_line_result.scale.y = 0.005;
+        cur_line_result.scale.z = pt2pt_dis(Y.row(i), Y.row(i+1));
+
+        // set color
+        cur_line_result.color.r = line_color[0];
+        cur_line_result.color.g = line_color[1];
+        cur_line_result.color.b = line_color[2];
+        cur_line_result.color.a = line_color[3];
+
+        results.markers.push_back(cur_line_result);
+    }
+
+    return results;
 }
 
 Mat occlusion_mask;
@@ -576,6 +687,17 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     }
     gripper_pt = {template_cloud->points[gripped_idx].x, template_cloud->points[gripped_idx].y, template_cloud->points[gripped_idx].z};
 
+    // convert to MatrixXf
+    MatrixXf Y = MatrixXf::Zero(num_of_nodes, 3);
+    for (int i = 0; i < num_of_nodes; i ++) {
+        Y(i, 0) = template_cloud->points[i].x;
+        Y(i, 1) = template_cloud->points[i].y;
+        Y(i, 2) = template_cloud->points[i].z;
+    }
+    // publish marker array
+    visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
+    results_pub.publish(results);
+
     double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
     ROS_WARN_STREAM("Total callback time difference: " + std::to_string(time_diff) + " ms");
 
@@ -612,6 +734,7 @@ int main(int argc, char **argv) {
     image_transport::ImageTransport it(nh);
     image_transport::Subscriber opencv_mask_sub = it.subscribe("/mask_with_occlusion", 10, update_opencv_mask);
     image_transport::Publisher mask_pub = it.advertise("/mask", 10);
+    results_pub = nh.advertise<visualization_msgs::MarkerArray>("/results_marker", 1);
 
     original_publisher = nh.advertise<PointCloud> ("cdcpd/original", 1);
     masked_publisher = nh.advertise<PointCloud> ("cdcpd/masked", 1);
