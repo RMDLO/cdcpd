@@ -87,10 +87,10 @@ class CDCPD {
 public:
     struct Output {
         #ifdef ENTIRE
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr original_cloud;
+        pcl::PointCloud<pcl::PointXYZRGB> original_cloud;
         #endif
-        pcl::PointCloud<pcl::PointXYZ>::Ptr masked_point_cloud;
-        pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled_cloud;
+        pcl::PointCloud<pcl::PointXYZRGB> masked_point_cloud;
+        pcl::PointCloud<pcl::PointXYZRGB> downsampled_cloud;
         pcl::PointCloud<pcl::PointXYZ>::Ptr cpd_output;
         pcl::PointCloud<pcl::PointXYZ>::Ptr cpd_predict;
         pcl::PointCloud<pcl::PointXYZ>::Ptr gurobi_output;
@@ -137,7 +137,8 @@ public:
 		  const bool is_sim = false);
 
     Output operator()(const cv::Mat& rgb, // RGB image
-                      const cv::Mat& depth, // Depth image
+                      const cv::Mat& depth,
+                      const sensor_msgs::PointCloud2ConstPtr& pc_msg,
                       const cv::Mat& mask,
                       const cv::Matx33d& intrinsics,
                       const pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud,
@@ -151,7 +152,8 @@ public:
 
 
     Output operator()(const cv::Mat& rgb, // RGB image
-                      const cv::Mat& depth, // Depth image
+                      const cv::Mat& depth,
+                      const sensor_msgs::PointCloud2ConstPtr& pc_msg,
                       const cv::Mat& mask,
                       const cv::Matx33d& intrinsics,
                       const pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud,
@@ -169,7 +171,8 @@ public:
                       const std::vector<FixedPoint>& fixed_points = {});
     
 	Output operator()(const cv::Mat& rgb, // RGB image
-                      const cv::Mat& depth, // Depth image
+                      const cv::Mat& depth,
+                      const sensor_msgs::PointCloud2ConstPtr& pc_msg,
                       const cv::Mat& mask,
                       const cv::Matx33d& intrinsics,
                       const pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud,

@@ -211,7 +211,7 @@ auto frame_id = "camera_color_optical_frame";
 bool use_eval_rope = false;
 std::shared_ptr<ros::NodeHandle> nh_ptr;
 
-sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg) {
+sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
     Mat mask_blue, mask_red_1, mask_red_2, mask_red, mask, mask_rgb;
     Mat cur_image_orig = cv_bridge::toCvShare(image_msg, "bgr8")->image;
     cout << "finished first conversion" << std::endl;
@@ -293,7 +293,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     CDCPD::Output out;
 
     // // ----- no pred -----
-    // out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, false, false, false, 0, fixed_points); 
+    // out = cdcpd(rgb_image, depth_image, pc_msg, mask, placeholder, template_cloud, false, false, false, 0, fixed_points); 
     
     // ----- predictions -----
     // tip node position: -0.259614 -0.00676498     0.61341; probably the left one
@@ -354,13 +354,13 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 
     // // ----- pred 0 -----
-    // out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
+    // out = cdcpd(rgb_image, depth_image, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
 
     // // ----- pred 1 -----
-    // out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 1, fixed_points);
+    // out = cdcpd(rgb_image, depth_image, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 1, fixed_points);
 
     // ----- pred 2 -----
-    out = cdcpd(rgb_image, depth_image, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
+    out = cdcpd(rgb_image, depth_image, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
     
     template_cloud = out.gurobi_output;
 
@@ -375,15 +375,15 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
     // change frame id
     out.gurobi_output->header.frame_id = frame_id;
-    out.original_cloud->header.frame_id = frame_id;
-    out.masked_point_cloud->header.frame_id = frame_id;
-    out.downsampled_cloud->header.frame_id = frame_id;
+    out.original_cloud.header.frame_id = frame_id;
+    out.masked_point_cloud.header.frame_id = frame_id;
+    out.downsampled_cloud.header.frame_id = frame_id;
     out.cpd_predict->header.frame_id = frame_id;
 
     auto time = ros::Time::now();
-    pcl_conversions::toPCL(time, out.original_cloud->header.stamp);
-    pcl_conversions::toPCL(time, out.masked_point_cloud->header.stamp);
-    pcl_conversions::toPCL(time, out.downsampled_cloud->header.stamp);
+    pcl_conversions::toPCL(time, out.original_cloud.header.stamp);
+    pcl_conversions::toPCL(time, out.masked_point_cloud.header.stamp);
+    pcl_conversions::toPCL(time, out.downsampled_cloud.header.stamp);
     pcl_conversions::toPCL(time, out.gurobi_output->header.stamp);
     // pcl_conversions::toPCL(time, template_cloud_init->header.stamp);
     pcl_conversions::toPCL(time, out.cpd_predict->header.stamp);
@@ -440,11 +440,12 @@ int main(int argc, char **argv) {
 
     message_filters::Subscriber<sensor_msgs::Image> image_sub(nh, "/camera/color/image_raw", 10);
     message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh, "/camera/depth/image_rect_raw", 10);
-    message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::Image> sync(image_sub, depth_sub, 10);
+    message_filters::Subscriber<sensor_msgs::PointCloud2> pc_sub(nh, "/camera/depth/color/points", 10);
+    message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::PointCloud2> sync(image_sub, depth_sub, pc_sub, 10);
 
     sync.registerCallback<std::function<void(const sensor_msgs::ImageConstPtr&, 
                                              const sensor_msgs::ImageConstPtr&,
-                                             const boost::shared_ptr<const message_filters::NullType>,
+                                             const sensor_msgs::PointCloud2ConstPtr&,
                                              const boost::shared_ptr<const message_filters::NullType>,
                                              const boost::shared_ptr<const message_filters::NullType>,
                                              const boost::shared_ptr<const message_filters::NullType>,
@@ -454,17 +455,17 @@ int main(int argc, char **argv) {
     (
         [&](const sensor_msgs::ImageConstPtr& img_msg, 
             const sensor_msgs::ImageConstPtr& depth_msg,
+            const sensor_msgs::PointCloud2ConstPtr& pc_msg,
             const boost::shared_ptr<const message_filters::NullType> var1,
             const boost::shared_ptr<const message_filters::NullType> var2,
             const boost::shared_ptr<const message_filters::NullType> var3,
             const boost::shared_ptr<const message_filters::NullType> var4,
             const boost::shared_ptr<const message_filters::NullType> var5,
-            const boost::shared_ptr<const message_filters::NullType> var6,
-            const boost::shared_ptr<const message_filters::NullType> var7)
+            const boost::shared_ptr<const message_filters::NullType> var6)
         {
             // sensor_msgs::ImagePtr test_image = imageCallback(msg, _);
             // mask_pub.publish(test_image);
-            sensor_msgs::ImagePtr mask_img = Callback(img_msg, depth_msg); // sensor_msgs::ImagePtr tracking_img = 
+            sensor_msgs::ImagePtr mask_img = Callback(img_msg, depth_msg, pc_msg); // sensor_msgs::ImagePtr tracking_img = 
             mask_pub.publish(mask_img);
         }
     );
