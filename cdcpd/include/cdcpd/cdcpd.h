@@ -138,7 +138,7 @@ public:
 
     Output operator()(const cv::Mat& rgb, // RGB image
                       const cv::Mat& depth,
-                      const sensor_msgs::PointCloud2ConstPtr& pc_msg,
+                      const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
                       const cv::Mat& mask,
                       const cv::Matx33d& intrinsics,
                       const pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud,
@@ -153,7 +153,7 @@ public:
 
     Output operator()(const cv::Mat& rgb, // RGB image
                       const cv::Mat& depth,
-                      const sensor_msgs::PointCloud2ConstPtr& pc_msg,
+                      const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
                       const cv::Mat& mask,
                       const cv::Matx33d& intrinsics,
                       const pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud,
@@ -172,7 +172,7 @@ public:
     
 	Output operator()(const cv::Mat& rgb, // RGB image
                       const cv::Mat& depth,
-                      const sensor_msgs::PointCloud2ConstPtr& pc_msg,
+                      const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
                       const cv::Mat& mask,
                       const cv::Matx33d& intrinsics,
                       const pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud,

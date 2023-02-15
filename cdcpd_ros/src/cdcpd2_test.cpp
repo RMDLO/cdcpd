@@ -505,49 +505,55 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     sensor_msgs::ImagePtr mask_msg = nullptr;
     mask_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", mask_rgb).toImageMsg();
 
-    if (!initialized) {
-        pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
+    // deal with point cloud 
+    pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
+    // Convert to PCL data type
+    pcl_conversions::toPCL(*pc_msg, *cloud);   // cloud is 720*1280 (height*width) now, however is a ros pointcloud2 message. 
+                                            // see message definition here: http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/PointCloud2.html
 
-        // Convert to PCL data type
-        pcl_conversions::toPCL(*pc_msg, *cloud);   // cloud is 720*1280 (height*width) now, however is a ros pointcloud2 message. 
-                                               // see message definition here: http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/PointCloud2.html
+    if (cloud->width == 0 && cloud->height == 0) {
+        ROS_ERROR("empty point cloud!");
+        return mask_msg;
+    }
 
-        if (cloud->width == 0 && cloud->height == 0) {
-            ROS_ERROR("empty point cloud!");
-            return mask_msg;
-        }
+    std::cout << "non empty point cloud" << std::endl;
 
-        std::cout << "non empty point cloud" << std::endl;
+    // convert to xyz point
+    pcl::PointCloud<pcl::PointXYZRGB> cloud_xyz;
+    pcl::fromPCLPointCloud2(*cloud, cloud_xyz);
+    // now create objects for cur_pc
+    pcl::PCLPointCloud2* cur_pc = new pcl::PCLPointCloud2;
+    pcl::PointCloud<pcl::PointXYZRGB> cur_pc_xyz;
+    pcl::PointCloud<pcl::PointXYZRGB> cur_nodes_xyz;
+    pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz;
 
-        // convert to xyz point
-        pcl::PointCloud<pcl::PointXYZRGB> cloud_xyz;
-        pcl::fromPCLPointCloud2(*cloud, cloud_xyz);
-        // now create objects for cur_pc
-        pcl::PCLPointCloud2* cur_pc = new pcl::PCLPointCloud2;
-        pcl::PointCloud<pcl::PointXYZRGB> cur_pc_xyz;
-        pcl::PointCloud<pcl::PointXYZRGB> cur_nodes_xyz;
-        pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz;
+    pcl::PointCloud<pcl::PointXYZRGB> cur_red_xyz;
 
-        // filter point cloud from mask
-        for (int i = 0; i < cloud->height; i ++) {
-            for (int j = 0; j < cloud->width; j ++) {
-                if (mask.at<uchar>(i, j) != 0) {
-                    cur_pc_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
-                }
+    // filter point cloud from mask
+    for (int i = 0; i < cloud->height; i ++) {
+        for (int j = 0; j < cloud->width; j ++) {
+            if (mask.at<uchar>(i, j) != 0) {
+                cur_pc_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
+            }
+            if (mask_red.at<uchar>(i, j) != 0) {
+                cur_red_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
             }
         }
+    }
 
-        // convert back to pointcloud2 message
-        pcl::toPCLPointCloud2(cur_pc_xyz, *cur_pc);
-        // Perform downsampling
-        pcl::PCLPointCloud2ConstPtr cloudPtr(cur_pc);
-        pcl::PCLPointCloud2 cur_pc_downsampled;
-        pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
-        sor.setInputCloud (cloudPtr);
-        sor.setLeafSize (0.005, 0.005, 0.005);
-        sor.filter (cur_pc_downsampled);
+    // convert back to pointcloud2 message
+    pcl::toPCLPointCloud2(cur_pc_xyz, *cur_pc);
+    // Perform downsampling
+    pcl::PCLPointCloud2ConstPtr cloudPtr(cur_pc);
+    pcl::PCLPointCloud2 cur_pc_downsampled;
+    pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
+    sor.setInputCloud (cloudPtr);
+    sor.setLeafSize (0.005, 0.005, 0.005);
+    sor.filter (cur_pc_downsampled);
 
-        pcl::fromPCLPointCloud2(cur_pc_downsampled, downsampled_xyz);
+    pcl::fromPCLPointCloud2(cur_pc_downsampled, downsampled_xyz);
+
+    if (!initialized) {
         MatrixXf X = downsampled_xyz.getMatrixXfMap().topRows(3).transpose();
 
         std::cout << "found X" << std::endl;
@@ -693,7 +699,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     // out = cdcpd(rgb_image, depth_image, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 1, fixed_points);
 
     // ----- pred 2 -----
-    out = cdcpd(rgb_image, depth_image, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
+    out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
     
     template_cloud = out.gurobi_output;
 

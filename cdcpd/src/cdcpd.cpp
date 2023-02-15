@@ -1485,7 +1485,7 @@ Matrix3Xd CDCPD::predict(const Matrix3Xd& P,
 CDCPD::Output CDCPD::operator()(
         const Mat& rgb,
         const Mat& depth,
-        const sensor_msgs::PointCloud2ConstPtr& pc_msg,
+        const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
         const Mat& mask,
         const cv::Matx33d& intrinsics,
         const PointCloud::Ptr template_cloud,
@@ -1536,19 +1536,21 @@ CDCPD::Output CDCPD::operator()(
 
     // entire_cloud: pointer to the entire point cloud
     // cloud: pointer to the point clouds selected
-    #ifdef ENTIRE
-    auto [entire_cloud, cloud]
-    #else
-    auto [cloud]
-    #endif
-        = point_clouds_from_images(
-                pc_msg,
-                rgb,
-                mask,
-                intrinsics_eigen,
-                last_lower_bounding_box - bounding_box_extend,
-                last_upper_bounding_box + bounding_box_extend,
-				is_sim);
+    // #ifdef ENTIRE
+    // auto [entire_cloud, cloud]
+    // #else
+    // auto [cloud]
+    // #endif
+    //     = point_clouds_from_images(
+    //             pc_msg,
+    //             rgb,
+    //             mask,
+    //             intrinsics_eigen,
+    //             last_lower_bounding_box - bounding_box_extend,
+    //             last_upper_bounding_box + bounding_box_extend,
+	// 			is_sim);
+    pcl::copyPointCloud(downsampled_xyz, cloud);
+    pcl::copyPointCloud(downsampled_xyz, entire_cloud);
     std::cout << "Points in filtered: (" << cloud.height << " x " << cloud.width << ")\n";
 
     const Matrix3Xf Y = template_cloud->getMatrixXfMap().topRows(3);
@@ -1666,7 +1668,7 @@ CDCPD::Output CDCPD::operator()(
 CDCPD::Output CDCPD::operator()(
         const Mat& rgb,
         const Mat& depth,
-        const sensor_msgs::PointCloud2ConstPtr& pc_msg,
+        const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
         const Mat& mask,
         const cv::Matx33d& intrinsics,
         const PointCloud::Ptr template_cloud,
@@ -1723,19 +1725,21 @@ CDCPD::Output CDCPD::operator()(
 
     // entire_cloud: pointer to the entire point cloud
     // cloud: pointer to the point clouds selected
-    #ifdef ENTIRE
-    auto [entire_cloud, cloud]
-    #else
-    auto [cloud]
-    #endif
-        = point_clouds_from_images(
-                pc_msg,
-                rgb,
-                mask,
-                intrinsics_eigen,
-                last_lower_bounding_box - bounding_box_extend,
-                last_upper_bounding_box + bounding_box_extend,
-				is_sim);
+    // #ifdef ENTIRE
+    // auto [entire_cloud, cloud]
+    // #else
+    // auto [cloud]
+    // #endif
+    //     = point_clouds_from_images(
+    //             pc_msg,
+    //             rgb,
+    //             mask,
+    //             intrinsics_eigen,
+    //             last_lower_bounding_box - bounding_box_extend,
+    //             last_upper_bounding_box + bounding_box_extend,
+	// 			is_sim);
+    pcl::copyPointCloud(downsampled_xyz, cloud);
+    pcl::copyPointCloud(downsampled_xyz, entire_cloud);
     std::cout << "Points in filtered: (" << cloud.height << " x " << cloud.width << ")\n";
 
     const Matrix3Xf Y = template_cloud->getMatrixXfMap().topRows(3);
@@ -1945,7 +1949,7 @@ CDCPD::Output CDCPD::operator()(
 CDCPD::Output CDCPD::operator()(
         const Mat& rgb,
         const Mat& depth,
-        const sensor_msgs::PointCloud2ConstPtr& pc_msg,
+        const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
         const Mat& mask,
         const cv::Matx33d& intrinsics,
         const PointCloud::Ptr template_cloud,
@@ -1991,19 +1995,21 @@ CDCPD::Output CDCPD::operator()(
 
     // entire_cloud: pointer to the entire point cloud
     // cloud: pointer to the point clouds selected
-    #ifdef ENTIRE
-    auto [entire_cloud, cloud]
-    #else
-    auto [cloud]
-    #endif
-        = point_clouds_from_images(
-                pc_msg,
-                rgb,
-                mask,
-                intrinsics_eigen,
-                last_lower_bounding_box - bounding_box_extend,
-                last_upper_bounding_box + bounding_box_extend,
-				is_sim);
+    // #ifdef ENTIRE
+    // auto [entire_cloud, cloud]
+    // #else
+    // auto [cloud]
+    // #endif
+    //     = point_clouds_from_images(
+    //             pc_msg,
+    //             rgb,
+    //             mask,
+    //             intrinsics_eigen,
+    //             last_lower_bounding_box - bounding_box_extend,
+    //             last_upper_bounding_box + bounding_box_extend,
+	// 			is_sim);
+    pcl::copyPointCloud(downsampled_xyz, cloud);
+    pcl::copyPointCloud(downsampled_xyz, entire_cloud);
     std::cout << "Points in filtered: (" << cloud.height << " x " << cloud.width << ")\n";
 
     const Matrix3Xf Y = template_cloud->getMatrixXfMap().topRows(3);
