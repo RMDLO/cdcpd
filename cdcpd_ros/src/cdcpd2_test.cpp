@@ -86,7 +86,7 @@ int gripped_idx = 0;
 // cdcpd2 params
 const double alpha = 0.5;
 const double lambda = 1.0;
-const float zeta = 2.0;
+const float zeta = 10.0;
 const double k_spring = 100.0;
 const double beta = 1.0;
 const bool is_sim = false;
@@ -397,29 +397,29 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr Matrix3Xf2pcptr(const Eigen::Matrix3X
 	return template_cloud;
 }
 
-// std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
-// {
-// 	float left_x = -0.5f; float left_y = 0.2f; float left_z = 0.6f; float right_x = 0.44f; float right_y = 0.2f; float right_z = 0.6f;
+std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
+{
+	float left_x = -0.2f; float left_y = 0.0f; float left_z = 0.6f; float right_x = 0.6f; float right_y = 0.0f; float right_z = 0.6f;
     
-// 	int points_on_rope = 30;
+	int points_on_rope = num_of_nodes;
 
-//     MatrixXf vertices(3, points_on_rope); // Y^0 in the paper
-//     vertices.setZero();
-//     vertices.row(0).setLinSpaced(points_on_rope, left_x, right_x);
-//     vertices.row(1).setLinSpaced(points_on_rope, left_y, right_y);
-//     vertices.row(2).setLinSpaced(points_on_rope, left_z, right_z);
+    MatrixXf vertices(3, points_on_rope); // Y^0 in the paper
+    vertices.setZero();
+    vertices.row(0).setLinSpaced(points_on_rope, left_x, right_x);
+    vertices.row(1).setLinSpaced(points_on_rope, left_y, right_y);
+    vertices.row(2).setLinSpaced(points_on_rope, left_z, right_z);
 
-//     MatrixXi edges(2, points_on_rope - 1);
-//     edges(0, 0) = 0;
-//     edges(1, edges.cols() - 1) = points_on_rope - 1;
-//     for (int i = 1; i <= edges.cols() - 1; ++i)
-//     {
-//         edges(0, i) = i;
-//         edges(1, i - 1) = i;
-//     }
+    MatrixXi edges(2, points_on_rope - 1);
+    edges(0, 0) = 0;
+    edges(1, edges.cols() - 1) = points_on_rope - 1;
+    for (int i = 1; i <= edges.cols() - 1; ++i)
+    {
+        edges(0, i) = i;
+        edges(1, i - 1) = i;
+    }
 
-//     return std::make_tuple(vertices, edges);
-// }
+    return std::make_tuple(vertices, edges);
+}
 
 std::vector<double> gripper_pt;
 std::vector<double> last_gripper_pt;
@@ -580,7 +580,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     MatrixXf cur_yellow_pts = cur_yellow_xyz.getMatrixXfMap().topRows(3).transpose();
     std::cout << cur_yellow_pts.rows() << std::endl;
     MatrixXf head_node = reg(cur_yellow_pts, 1, 0.1, 100);
-    std::cout << head_node << std::endl;
+    std::cout << "head node: " << head_node << std::endl;
 
     // convert back to pointcloud2 message
     pcl::toPCLPointCloud2(cur_pc_xyz, *cur_pc);
@@ -607,7 +607,8 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
         last_gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
 
-        auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
+        // auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
+        auto [template_vertices_, template_edges_] = init_template();
         template_vertices = template_vertices_.replicate(1, 1);
         template_edges = template_edges_.replicate(1, 1);
         template_cloud = Matrix3Xf2pcptr(template_vertices);
@@ -685,10 +686,10 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         one_config(0, 2) = 0.0;
         one_config(0, 3) = gripper_pt[0];
 
-        one_config(0, 0) = 0.0;
-        one_config(0, 1) = 1.0;
-        one_config(0, 2) = 0.0;
-        one_config(0, 3) = gripper_pt[1];
+        one_config(1, 0) = 0.0;
+        one_config(1, 1) = 1.0;
+        one_config(1, 2) = 0.0;
+        one_config(1, 3) = gripper_pt[1];
 
         one_config(2, 0) = 0.0;
         one_config(2, 1) = 0.0;
@@ -706,8 +707,14 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         for (uint32_t i = 0; i < 6; ++i) {
             if (i < 3) {
                 one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]); // / (gripper_time_diff / 1000.0);
+                if (one_velocity(i) < 1e-4) {
+                    one_velocity(i) = 0;
+                }
+                // else {
+                //     one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0);
+                // }
                 
-                std::cout << gripper_time_diff/1000.0 << std::endl;
+                // std::cout << gripper_time_diff/1000.0 << std::endl;
                 std::cout << "orig vel = " << gripper_pt[i] - last_gripper_pt[i] << std::endl;
                 std::cout << "scaled vel = " << (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0) << std::endl;
             }

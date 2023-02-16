@@ -1583,15 +1583,15 @@ CDCPD::Output CDCPD::operator()(
     std::vector<FixedPoint> pred_fixed_points;
 	cout << "gripper_idx" << endl;
 	cout << gripper_idx << endl << endl;
-    // for (int col = 0; col < gripper_idx.cols(); ++col)
-    // {
-    //     FixedPoint pt;
-	// 	pt.template_index = gripper_idx(0, col);
-    //     pt.position(0) = q_config[col](0, 3);
-    //     pt.position(1) = q_config[col](1, 3);
-    //     pt.position(2) = q_config[col](2, 3);
-    //     pred_fixed_points.push_back(pt);
-    // }
+    for (int col = 0; col < gripper_idx.cols(); ++col)
+    {
+        FixedPoint pt;
+		pt.template_index = gripper_idx(0, col);
+        pt.position(0) = q_config[col](0, 3);
+        pt.position(1) = q_config[col](1, 3);
+        pt.position(2) = q_config[col](2, 3);
+        pred_fixed_points.push_back(pt);
+    }
 
     // log time
     std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
@@ -1856,20 +1856,20 @@ CDCPD::Output CDCPD::operator()(
     // NOTE: order of P cannot influence delta_P, but influence P+delta_P
     // std::chrono::time_point<std::chrono::system_clock> start, end;
     std::vector<FixedPoint> pred_fixed_points;
-	// cout << "gripper_idx" << endl;
-	// cout << gripper_idx << endl << endl;
-	// if (model != NULL) {
-   	// 	for (int col = 0; col < gripper_idx.cols(); ++col)
-    // 	{
-    //     	FixedPoint pt;
-	// 		pt.template_index = gripper_idx(0, col);
-    //     	pt.position(0) = q_config_valid[col](0, 3);
-    //     	pt.position(1) = q_config_valid[col](1, 3);
-    //     	pt.position(2) = q_config_valid[col](2, 3);
-    //     	pred_fixed_points.push_back(pt);
-	// 		cout << q_config_valid[col].matrix().block<3,1>(0,3) << endl;
-    // 	}
-	// }
+	cout << "gripper_idx" << endl;
+	cout << gripper_idx << endl << endl;
+	if (model != NULL) {
+   		for (int col = 0; col < gripper_idx.cols(); ++col)
+    	{
+        	FixedPoint pt;
+			pt.template_index = gripper_idx(0, col);
+        	pt.position(0) = q_config_valid[col](0, 3);
+        	pt.position(1) = q_config_valid[col](1, 3);
+        	pt.position(2) = q_config_valid[col](2, 3);
+        	pred_fixed_points.push_back(pt);
+			cout << q_config_valid[col].matrix().block<3,1>(0,3) << endl;
+    	}
+	}
     
     // log time
     std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
