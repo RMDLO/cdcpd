@@ -87,10 +87,12 @@ int gripped_idx = 0;
 const bool is_gripper_info = false;
 
 const double alpha = 0.5;
+const double beta = 1.0;
 const double lambda = 1.0;
 const float zeta = 10.0;
+double leaf_size = 0.005;
+
 const double k_spring = 100.0;
-const double beta = 1.0;
 const bool is_sim = false;
 const bool is_rope = true;	
 const double translation_dir_deformability = 1.0;
@@ -661,7 +663,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     pcl::PCLPointCloud2 cur_pc_downsampled;
     pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
     sor.setInputCloud (cloudPtr);
-    sor.setLeafSize (0.012, 0.012, 0.012);
+    sor.setLeafSize (leaf_size, leaf_size, leaf_size);
     sor.filter (cur_pc_downsampled);
 
     pcl::fromPCLPointCloud2(cur_pc_downsampled, downsampled_xyz);
