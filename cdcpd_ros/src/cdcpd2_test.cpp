@@ -84,7 +84,7 @@ bool use_eval_rope = true;
 int gripped_idx = 0;
 
 // cdcpd2 params
-const bool is_gripper_info = true;
+const bool is_gripper_info = false;
 
 const double alpha = 0.5;
 const double lambda = 1.0;
@@ -529,6 +529,8 @@ ros::Publisher output_publisher;
 auto frame_id = "camera_color_optical_frame";
 std::shared_ptr<ros::NodeHandle> nh_ptr;
 
+std::chrono::steady_clock::time_point start_time;
+
 // ---------- CALLBACK ----------
 bool initialized = false;
 std::chrono::steady_clock::time_point gripper_time = std::chrono::steady_clock::now();
@@ -725,6 +727,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     fixed_points.push_back(right_gripper);
 
     std::vector<bool> is_grasped = {false, true};
+
+    // need gripper pos for initialization; wait 10 seconds
+    double time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0;
+    if (!is_gripper_info && time_from_start > 10.0) {
+        is_grasped = {false, false};
+    }
     bool is_interaction = false;
 
     CDCPD::Output out;
@@ -776,18 +784,23 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         double gripper_time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - gripper_time).count();
 
         for (uint32_t i = 0; i < 6; ++i) {
-            if (i < 3) {
-                one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]); // / (gripper_time_diff / 1000.0);
-                if (one_velocity(i) < 1e-4) {
+            if (is_gripper_info) {
+                if (i < 3) {
+                    one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]); // / (gripper_time_diff / 1000.0);
+                    if (one_velocity(i) < 1e-4) {
+                        one_velocity(i) = 0;
+                    }
+                    // else {
+                    //     one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0);
+                    // }
+                    
+                    // std::cout << gripper_time_diff/1000.0 << std::endl;
+                    std::cout << "orig vel = " << gripper_pt[i] - last_gripper_pt[i] << std::endl;
+                    std::cout << "scaled vel = " << (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0) << std::endl;
+                }
+                else {
                     one_velocity(i) = 0;
                 }
-                // else {
-                //     one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0);
-                // }
-                
-                // std::cout << gripper_time_diff/1000.0 << std::endl;
-                std::cout << "orig vel = " << gripper_pt[i] - last_gripper_pt[i] << std::endl;
-                std::cout << "scaled vel = " << (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0) << std::endl;
             }
             else {
                 one_velocity(i) = 0;
@@ -828,8 +841,9 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
     }
     else {
-        std::vector<CDCPD::FixedPoint> fixed_points = {};
-        out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, false, false, false, 0, fixed_points);
+        // out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, false, false, false, 0, fixed_points);
+        std::cout << "pred 0" << std::endl;
+        out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, {});
     }
 
     
@@ -897,6 +911,8 @@ int main(int argc, char **argv) {
     downsampled_publisher = nh.advertise<PointCloud> ("cdcpd/downsampled", 1);
     pred_publisher = nh.advertise<PointCloud>("cdcpd/prediction", 1);
     output_publisher = nh.advertise<PointCloud> ("cdcpd/output", 1);
+
+    start_time = std::chrono::steady_clock::now();
 
     message_filters::Subscriber<sensor_msgs::Image> image_sub(nh, "/camera/color/image_raw", 10);
     message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh, "/camera/depth/image_rect_raw", 10);
