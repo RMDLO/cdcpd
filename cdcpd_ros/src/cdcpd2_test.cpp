@@ -443,7 +443,7 @@ std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_gmm(MatrixXf Y_gmm)
         edges(1, i - 1) = i;
     }
 
-    std::cout << vertices << std::endl;
+    // std::cout << vertices << std::endl;
 
     return std::make_tuple(vertices, edges);
 }
@@ -506,7 +506,7 @@ std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_hardcoded()
         edges(1, i - 1) = i;
     }
 
-    std::cout << vertices << std::endl;
+    // std::cout << vertices << std::endl;
 
     return std::make_tuple(vertices, edges);
 }
@@ -622,7 +622,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         return mask_msg;
     }
 
-    std::cout << "non empty point cloud" << std::endl;
+    // std::cout << "non empty point cloud" << std::endl;
 
     // convert to xyz point
     pcl::PointCloud<pcl::PointXYZRGB> cloud_xyz;
@@ -654,7 +654,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     MatrixXf cur_yellow_pts = cur_yellow_xyz.getMatrixXfMap().topRows(3).transpose();
     std::cout << cur_yellow_pts.rows() << std::endl;
     MatrixXf head_node = reg(cur_yellow_pts, 1, 0.1, 100);
-    std::cout << "head node: " << head_node << std::endl;
+    // std::cout << "head node: " << head_node << std::endl;
 
     // convert back to pointcloud2 message
     pcl::toPCLPointCloud2(cur_pc_xyz, *cur_pc);
@@ -671,12 +671,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     if (!initialized) {
         MatrixXf X = downsampled_xyz.getMatrixXfMap().topRows(3).transpose();
 
-        std::cout << "found X" << std::endl;
+        // std::cout << "found X" << std::endl;
 
         MatrixXf Y_gmm = reg(X, num_of_nodes, 0.05, 100);
         Y_gmm = sort_pts(Y_gmm);
 
-        std::cout << "found Y" << std::endl;
+        // std::cout << "found Y" << std::endl;
 
         gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
         last_gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
@@ -797,8 +797,8 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
                     // }
                     
                     // std::cout << gripper_time_diff/1000.0 << std::endl;
-                    std::cout << "orig vel = " << gripper_pt[i] - last_gripper_pt[i] << std::endl;
-                    std::cout << "scaled vel = " << (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0) << std::endl;
+                    // std::cout << "vel = " << gripper_pt[i] - last_gripper_pt[i] << std::endl;
+                    // std::cout << "scaled vel = " << (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0) << std::endl;
                 }
                 else {
                     one_velocity(i) = 0;
@@ -844,7 +844,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     }
     else {
         // out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, false, false, false, 0, fixed_points);
-        std::cout << "pred 0" << std::endl;
+        // std::cout << "pred 0" << std::endl;
         out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, {});
     }
 
@@ -859,12 +859,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         Y(i, 2) = template_cloud->points[i].z;
     }
 
-    // print out results
-    std::cout << "=====" << std::endl;
-    for (int i = 0; i < Y.rows(); i ++) {
-        std::cout << Y(i, 0) << ", " << Y(i, 1) << ", " << Y(i, 2) << "," << std::endl;
-    }
-    std::cout << "=====" << std::endl;
+    // // print out results
+    // std::cout << "=====" << std::endl;
+    // for (int i = 0; i < Y.rows(); i ++) {
+    //     std::cout << Y(i, 0) << ", " << Y(i, 1) << ", " << Y(i, 2) << "," << std::endl;
+    // }
+    // std::cout << "=====" << std::endl;
 
     // publish marker array
     visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(head_node, Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
@@ -912,7 +912,7 @@ int main(int argc, char **argv) {
     masked_publisher = nh.advertise<PointCloud> ("cdcpd/masked", 1);
     downsampled_publisher = nh.advertise<PointCloud> ("cdcpd/downsampled", 1);
     pred_publisher = nh.advertise<PointCloud>("cdcpd/prediction", 1);
-    output_publisher = nh.advertise<PointCloud> ("cdcpd/output", 1);
+    output_publisher = nh.advertise<PointCloud> ("cdcpd2_results_pc", 1);
 
     start_time = std::chrono::steady_clock::now();
 
