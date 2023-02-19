@@ -3,4 +3,6 @@
 demos/rosbags
 demos/rosbags_compressed
 .vscode
-__pycache__/
+cdcpd/__pycache__/
+*.pyc
+cdcpd.egg-info/
