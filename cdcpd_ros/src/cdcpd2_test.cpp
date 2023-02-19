@@ -84,7 +84,7 @@ bool use_eval_rope = true;
 int gripped_idx = 0;
 
 // cdcpd2 params
-const bool is_gripper_info = false;
+const bool is_gripper_info = true;
 
 const double alpha = 0.5;
 const double lambda = 1.0;
@@ -400,7 +400,8 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr Matrix3Xf2pcptr(const Eigen::Matrix3X
 
 std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
 {
-	float left_x = -0.2f; float left_y = 0.0f; float left_z = 0.6f; float right_x = 0.6f; float right_y = 0.0f; float right_z = 0.6f;
+	float left_x = -0.2f; float left_y = 0.05f; float left_z = 0.6f; float right_x = -0.2f; float right_y = -0.68f; float right_z = 0.6f;
+    // float left_x = -0.1f; float left_y = 0.1f; float left_z = 0.6f; float right_x = 0.4667f; float right_y = -0.4667f; float right_z = 0.6f;
     
 	int points_on_rope = num_of_nodes;
 
@@ -427,6 +428,69 @@ std::vector<double> last_gripper_pt;
 
 std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_gmm(MatrixXf Y_gmm)
 {
+	int points_on_rope = Y_gmm.rows();
+
+    MatrixXf vertices = Y_gmm.transpose().replicate(1, 1);
+
+    MatrixXi edges(2, points_on_rope - 1);
+    edges(0, 0) = 0;
+    edges(1, edges.cols() - 1) = points_on_rope - 1;
+    for (int i = 1; i <= edges.cols() - 1; ++i)
+    {
+        edges(0, i) = i;
+        edges(1, i - 1) = i;
+    }
+
+    std::cout << vertices << std::endl;
+
+    return std::make_tuple(vertices, edges);
+}
+
+std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_hardcoded()
+{
+    MatrixXf Y_gmm (num_of_nodes, 3);
+    Y_gmm << -0.144872, 0.0617589, 0.615662,
+            -0.124848, 0.0631418, 0.615966,
+            -0.104846, 0.0647257, 0.616237,
+            -0.0848503, 0.0663873, 0.616559,
+            -0.0648565, 0.0680472, 0.616992,
+            -0.0448561, 0.06959, 0.617533,
+            -0.0248434, 0.0709191, 0.61816,
+            -0.00481581, 0.0719454, 0.618858,
+            0.0152244, 0.0725764, 0.61963,
+            0.0352708, 0.0726941, 0.620457,
+            0.0553079, 0.0722006, 0.621335,
+            0.0753098, 0.0709755, 0.622255,
+            0.0952348, 0.068873, 0.623207,
+            0.115016, 0.065717, 0.624187,
+            0.134546, 0.0612842, 0.62519,
+            0.153646, 0.0552827, 0.626212,
+            0.172009, 0.0473229, 0.627245,
+            0.189081, 0.036892, 0.628274,
+            0.203831, 0.0233889, 0.629267,
+            0.21442, 0.00643487, 0.630148,
+            0.21833, -0.013165, 0.630781,
+            0.21426, -0.0327355, 0.631046,
+            0.203763, -0.0497544, 0.630959,
+            0.189355, -0.063628, 0.630619,
+            0.172759, -0.0748026, 0.630112,
+            0.154898, -0.0838297, 0.629494,
+            0.136272, -0.0911611, 0.628796,
+            0.117152, -0.0970963, 0.628039,
+            0.0977038, -0.101854, 0.627233,
+            0.0780322, -0.105591, 0.626388,
+            0.0582091, -0.108421, 0.625509,
+            0.038286, -0.110432, 0.624599,
+            0.0183017, -0.111691, 0.623662,
+            -0.00171338, -0.112254, 0.622698,
+            -0.0217345, -0.112166, 0.621708,
+            -0.041741, -0.111466, 0.620694,
+            -0.0617145, -0.110187, 0.619653,
+            -0.081638, -0.108356, 0.618587,
+            -0.101494, -0.105994, 0.617494,
+            -0.121268, -0.103126, 0.616374,
+            -0.140948, -0.0997492, 0.615223;
+
 	int points_on_rope = Y_gmm.rows();
 
     MatrixXf vertices = Y_gmm.transpose().replicate(1, 1);
@@ -595,7 +659,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     pcl::PCLPointCloud2 cur_pc_downsampled;
     pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
     sor.setInputCloud (cloudPtr);
-    sor.setLeafSize (0.005, 0.005, 0.005);
+    sor.setLeafSize (0.012, 0.012, 0.012);
     sor.filter (cur_pc_downsampled);
 
     pcl::fromPCLPointCloud2(cur_pc_downsampled, downsampled_xyz);
@@ -615,6 +679,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
         // auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
         auto [template_vertices_, template_edges_] = init_template();
+        // auto [template_vertices_, template_edges_] = init_template_hardcoded();
         template_vertices = template_vertices_.replicate(1, 1);
         template_edges = template_edges_.replicate(1, 1);
         template_cloud = Matrix3Xf2pcptr(template_vertices);
@@ -777,6 +842,14 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         Y(i, 1) = template_cloud->points[i].y;
         Y(i, 2) = template_cloud->points[i].z;
     }
+
+    // print out results
+    std::cout << "=====" << std::endl;
+    for (int i = 0; i < Y.rows(); i ++) {
+        std::cout << Y(i, 0) << ", " << Y(i, 1) << ", " << Y(i, 2) << "," << std::endl;
+    }
+    std::cout << "=====" << std::endl;
+
     // publish marker array
     visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(head_node, Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
     results_pub.publish(results);
