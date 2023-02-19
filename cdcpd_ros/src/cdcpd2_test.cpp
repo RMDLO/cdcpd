@@ -84,13 +84,13 @@ bool use_eval_rope = true;
 int gripped_idx = 0;
 
 // cdcpd2 params
-const bool is_gripper_info = false;
+const bool is_gripper_info = true;
 
 const double alpha = 0.5;
 const double beta = 1.0;
 const double lambda = 1.0;
 const float zeta = 10.0;
-double leaf_size = 0.005;
+double leaf_size = 0.012;
 
 const double k_spring = 100.0;
 const bool is_sim = false;
