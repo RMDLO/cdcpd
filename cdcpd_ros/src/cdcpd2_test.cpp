@@ -410,7 +410,8 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr Matrix3Xf2pcptr(const Eigen::Matrix3X
 
 std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
 {
-	float left_x = -0.2f; float left_y = -0.05f; float left_z = 0.6f; float right_x = -0.2f; float right_y = 0.68f; float right_z = 0.6f;
+	// float left_x = 0.2f; float left_y = -0.1f; float left_z = 0.6f; float right_x = 0.2f; float right_y = 0.63f; float right_z = 0.6f;
+    float left_x = -0.1f; float left_y = 0.0f; float left_z = 0.6f; float right_x = -0.83f; float right_y = 0.0f; float right_z = 0.6f;
     // float left_x = -0.1f; float left_y = 0.1f; float left_z = 0.6f; float right_x = 0.4667f; float right_y = -0.4667f; float right_z = 0.6f;
     
 	int points_on_rope = num_of_nodes;
@@ -652,7 +653,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
             depth_image.at<uchar>(i, j) = cloud_xyz(j, i).z;
 
             // should not pick up points from the gripper
-            if (cloud_xyz(j, i).z < 0.6) {
+            if (cloud_xyz(j, i).z < 0.58) {
                 continue;
             }
 
@@ -698,13 +699,13 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
         // std::cout << "found Y" << std::endl;
 
-        if (is_gripper_info && !use_real_gripper) {
-            gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
-            last_gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
-        }
         if (is_gripper_info && use_real_gripper) {
             gripper_pt = {transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z};
             last_gripper_pt = {transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z};
+        }
+        else {
+            gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
+            last_gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
         }
 
         // auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
@@ -747,13 +748,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     cv::Matx33d placeholder;
     std::vector<CDCPD::FixedPoint> fixed_points;
 
-    if (is_gripper_info && !use_real_gripper) {
-        gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
-    }
     if (is_gripper_info && use_real_gripper) {
         gripper_pt = {transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z};
     }
-    
+    else {
+        gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
+    }
     
     Eigen::Vector3f left_pos((float)gripper_pt[0], (float)gripper_pt[1], (float)gripper_pt[2]);
     CDCPD::FixedPoint left_gripper = {left_pos, 0};
