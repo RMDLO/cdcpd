@@ -41,6 +41,8 @@
 #include <cdcpd/optimizer.h>
 
 #include <opencv2/core/eigen.hpp>
+#include <tf2_ros/transform_listener.h>
+#include <geometry_msgs/TransformStamped.h>
 
 #include <cdcpd_ros/Float32MultiArrayStamped.h>
 #include <victor_hardware_interface/Robotiq3FingerStatus_sync.h>
@@ -85,6 +87,7 @@ int gripped_idx = 0;
 
 // cdcpd2 params
 const bool is_gripper_info = true;
+const bool use_real_gripper = true;
 
 const double alpha = 0.5;
 const double beta = 1.0;
@@ -259,6 +262,9 @@ MatrixXf sort_pts (MatrixXf Y_0) {
 }
 
 ros::Publisher results_pub;
+
+// read gripper tf
+tf2_ros::Buffer tfBuffer;
 
 // node color and object color are in rgba format and range from 0-1
 visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf gripped_pt, MatrixXf Y, std::string marker_frame, std::string marker_ns, std::vector<float> node_color, std::vector<float> line_color) {
@@ -642,6 +648,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     for (int i = 0; i < cloud->height; i ++) {
         for (int j = 0; j < cloud->width; j ++) {
             depth_image.at<uchar>(i, j) = cloud_xyz(j, i).z;
+
+            // should not pick up points from the gripper
+            if (cloud_xyz(j, i).z < 0.6) {
+                continue;
+            }
+
             if (mask.at<uchar>(i, j) != 0) {
                 cur_pc_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
             }
@@ -649,6 +661,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
                 cur_yellow_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
             }
         }
+    }
+
+    geometry_msgs::TransformStamped transformStamped;
+    if (use_real_gripper) {
+        transformStamped = tfBuffer.lookupTransform("base_link", "camera_color_optical_frame", ros::Time(0));
+        std::cout << "translation: " << transformStamped.transform.translation.x << "; " << transformStamped.transform.translation.y << "; " << transformStamped.transform.translation.z << std::endl;
     }
 
     MatrixXf cur_yellow_pts = cur_yellow_xyz.getMatrixXfMap().topRows(3).transpose();
@@ -880,7 +898,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     out.downsampled_cloud.header.frame_id = frame_id;
     out.cpd_predict->header.frame_id = frame_id;
 
-    auto time = ros::Time::now();
+    auto time = pc_msg->header.stamp;
     pcl_conversions::toPCL(time, out.original_cloud.header.stamp);
     pcl_conversions::toPCL(time, out.masked_point_cloud.header.stamp);
     pcl_conversions::toPCL(time, out.downsampled_cloud.header.stamp);
@@ -915,6 +933,8 @@ int main(int argc, char **argv) {
     output_publisher = nh.advertise<PointCloud> ("cdcpd2_results_pc", 1);
 
     start_time = std::chrono::steady_clock::now();
+
+    tf2_ros::TransformListener tfListener(tfBuffer);
 
     message_filters::Subscriber<sensor_msgs::Image> image_sub(nh, "/camera/color/image_raw", 10);
     message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh, "/camera/depth/image_rect_raw", 10);
