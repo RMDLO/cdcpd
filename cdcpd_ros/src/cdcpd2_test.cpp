@@ -48,6 +48,8 @@
 #include <victor_hardware_interface/Robotiq3FingerStatus_sync.h>
 #include <victor_hardware_interface/Robotiq3FingerStatus.h>
 
+#include <Eigen/Geometry>
+
 using smmap::AllGrippersSinglePose;
 // typedef EigenHelpers::VectorIsometry3d AllGrippersSinglePose;
 
@@ -794,25 +796,49 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         //     }
         // }
 
-        one_config(0, 0) = 1.0;
-        one_config(0, 1) = 0.0;
-        one_config(0, 2) = 0.0;
-        one_config(0, 3) = gripper_pt[0];
+        if (!use_real_gripper) {
+            one_config(0, 0) = 1.0;
+            one_config(0, 1) = 0.0;
+            one_config(0, 2) = 0.0;
 
-        one_config(1, 0) = 0.0;
-        one_config(1, 1) = 1.0;
-        one_config(1, 2) = 0.0;
-        one_config(1, 3) = gripper_pt[1];
+            one_config(1, 0) = 0.0;
+            one_config(1, 1) = 1.0;
+            one_config(1, 2) = 0.0;
 
-        one_config(2, 0) = 0.0;
-        one_config(2, 1) = 0.0;
-        one_config(2, 2) = 1.0;
-        one_config(2, 3) = gripper_pt[2];
+            one_config(2, 0) = 0.0;
+            one_config(2, 1) = 0.0;
+            one_config(2, 2) = 1.0;
+        }
+        else {
+            Eigen::Quaterniond q;
+            q.w() = transformStamped.transform.rotation.w;
+            q.x() = transformStamped.transform.rotation.x;
+            q.y() = transformStamped.transform.rotation.y;
+            q.z() = transformStamped.transform.rotation.z;
+
+            auto R = q.normalized().toRotationMatrix();
+
+            one_config(0, 0) = R(0, 0);
+            one_config(0, 1) = R(0, 1);
+            one_config(0, 2) = R(0, 2);
+
+            one_config(1, 0) = R(1, 0);
+            one_config(1, 1) = R(1, 1);
+            one_config(1, 2) = R(1, 2);
+
+            one_config(2, 0) = R(2, 0);
+            one_config(2, 1) = R(2, 1);
+            one_config(2, 2) = R(2, 2);
+        }
 
         one_config(3, 0) = 0.0;
         one_config(3, 1) = 0.0;
         one_config(3, 2) = 0.0;
         one_config(3, 3) = 1.0;
+
+        one_config(0, 3) = gripper_pt[0];
+        one_config(1, 3) = gripper_pt[1];
+        one_config(2, 3) = gripper_pt[2];
 
         // log time
         double gripper_time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - gripper_time).count();
