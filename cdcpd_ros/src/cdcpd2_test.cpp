@@ -89,7 +89,10 @@ int gripped_idx = 0;
 
 // cdcpd2 params
 const bool is_gripper_info = true;
-const bool use_real_gripper = true;
+const bool use_real_gripper = false;
+
+// 0 -> statinary.bag; 1 -> with_gripper_perpendicular.bag
+const int bag_file = 0;
 
 const double alpha = 0.5;
 const double beta = 1.0;
@@ -410,9 +413,17 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr Matrix3Xf2pcptr(const Eigen::Matrix3X
 
 std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
 {
-	// float left_x = 0.2f; float left_y = -0.1f; float left_z = 0.6f; float right_x = 0.2f; float right_y = 0.63f; float right_z = 0.6f;
-    float left_x = -0.1f; float left_y = 0.0f; float left_z = 0.6f; float right_x = -0.83f; float right_y = 0.0f; float right_z = 0.6f;
-    // float left_x = -0.1f; float left_y = 0.1f; float left_z = 0.6f; float right_x = 0.4667f; float right_y = -0.4667f; float right_z = 0.6f;
+    float left_x, left_y, left_z, right_x, right_y, right_z;
+    if (bag_file == 0) {
+        left_x = 0.0f; left_y = -0.05f; left_z = 0.6f; right_x = 0.0f; right_y = -0.78f; right_z = 0.6f;
+    }
+    else if (bag_file == 1) {
+        left_x = -0.1f; left_y = 0.0f; left_z = 0.6f; right_x = -0.83f; right_y = 0.0f; right_z = 0.6f;
+    }
+    else {
+        // default 
+        left_x = -0.1f; left_y = 0.0f; left_z = 0.6f; right_x = -0.83f; right_y = 0.0f; right_z = 0.6f;
+    }
     
 	int points_on_rope = num_of_nodes;
 
