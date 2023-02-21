@@ -109,7 +109,7 @@ add_executable(testcdcpd2
   src/cdcpd2_test.cpp
 )
 set_target_properties(testcdcpd2 PROPERTIES
-    OUTPUT_NAME test_cdcpd2 PREFIX ""
+    OUTPUT_NAME cdcpd2 PREFIX ""
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES)
 add_dependencies(testcdcpd2 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})

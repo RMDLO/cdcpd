@@ -83,29 +83,36 @@ using Eigen::VectorXi;
 using pcl::PointXYZ;
 
 // ---------- CONFIG -----------
-int num_of_nodes = 41;
-bool use_eval_rope = true;
-int gripped_idx = 0;
+int num_of_nodes;
+bool use_eval_rope;
 
 // cdcpd2 params
-const bool is_gripper_info = true;
-const bool use_real_gripper = false;
+bool is_gripper_info;
+bool use_real_gripper;
 
 // 0 -> statinary.bag; 1 -> with_gripper_perpendicular.bag
-const int bag_file = 0;
+int bag_file;
 
-const double alpha = 0.5;
-const double beta = 1.0;
-const double lambda = 1.0;
-const float zeta = 10.0;
-double leaf_size = 0.012;
+double alpha;
+double beta;
+double lambda;
+float zeta;
+double leaf_size;
 
-const double k_spring = 100.0;
-const bool is_sim = false;
-const bool is_rope = true;	
-const double translation_dir_deformability = 1.0;
-const double translation_dis_deformability = 1.0;
-const double rotation_deformability = 10.0;
+double k_spring;
+bool is_sim;
+bool is_rope;	
+double translation_dir_deformability;
+double translation_dis_deformability;
+double rotation_deformability;
+
+// rope pos initialization
+double left_x; 
+double left_y; 
+double left_z; 
+double right_x; 
+double right_y; 
+double right_z;
 // ---------- END OF CONFIG -----------
 
 template <typename T>
@@ -413,17 +420,16 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr Matrix3Xf2pcptr(const Eigen::Matrix3X
 
 std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
 {
-    float left_x, left_y, left_z, right_x, right_y, right_z;
-    if (bag_file == 0) {
-        left_x = 0.0f; left_y = -0.05f; left_z = 0.6f; right_x = 0.0f; right_y = -0.78f; right_z = 0.6f;
-    }
-    else if (bag_file == 1) {
-        left_x = -0.1f; left_y = 0.0f; left_z = 0.6f; right_x = -0.83f; right_y = 0.0f; right_z = 0.6f;
-    }
-    else {
-        // default 
-        left_x = -0.1f; left_y = 0.0f; left_z = 0.6f; right_x = -0.83f; right_y = 0.0f; right_z = 0.6f;
-    }
+    // if (bag_file == 0) {
+    //     left_x = 0.0f; left_y = -0.05f; left_z = 0.6f; right_x = 0.0f; right_y = -0.78f; right_z = 0.6f;
+    // }
+    // else if (bag_file == 1) {
+    //     left_x = -0.1f; left_y = 0.0f; left_z = 0.6f; right_x = -0.83f; right_y = 0.0f; right_z = 0.6f;
+    // }
+    // else {
+    //     // default 
+    //     left_x = -0.1f; left_y = 0.0f; left_z = 0.6f; right_x = -0.83f; right_y = 0.0f; right_z = 0.6f;
+    // }
     
 	int points_on_rope = num_of_nodes;
 
@@ -450,69 +456,6 @@ std::vector<double> last_gripper_pt;
 
 std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_gmm(MatrixXf Y_gmm)
 {
-	int points_on_rope = Y_gmm.rows();
-
-    MatrixXf vertices = Y_gmm.transpose().replicate(1, 1);
-
-    MatrixXi edges(2, points_on_rope - 1);
-    edges(0, 0) = 0;
-    edges(1, edges.cols() - 1) = points_on_rope - 1;
-    for (int i = 1; i <= edges.cols() - 1; ++i)
-    {
-        edges(0, i) = i;
-        edges(1, i - 1) = i;
-    }
-
-    // std::cout << vertices << std::endl;
-
-    return std::make_tuple(vertices, edges);
-}
-
-std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_hardcoded()
-{
-    MatrixXf Y_gmm (num_of_nodes, 3);
-    Y_gmm << -0.144872, 0.0617589, 0.615662,
-            -0.124848, 0.0631418, 0.615966,
-            -0.104846, 0.0647257, 0.616237,
-            -0.0848503, 0.0663873, 0.616559,
-            -0.0648565, 0.0680472, 0.616992,
-            -0.0448561, 0.06959, 0.617533,
-            -0.0248434, 0.0709191, 0.61816,
-            -0.00481581, 0.0719454, 0.618858,
-            0.0152244, 0.0725764, 0.61963,
-            0.0352708, 0.0726941, 0.620457,
-            0.0553079, 0.0722006, 0.621335,
-            0.0753098, 0.0709755, 0.622255,
-            0.0952348, 0.068873, 0.623207,
-            0.115016, 0.065717, 0.624187,
-            0.134546, 0.0612842, 0.62519,
-            0.153646, 0.0552827, 0.626212,
-            0.172009, 0.0473229, 0.627245,
-            0.189081, 0.036892, 0.628274,
-            0.203831, 0.0233889, 0.629267,
-            0.21442, 0.00643487, 0.630148,
-            0.21833, -0.013165, 0.630781,
-            0.21426, -0.0327355, 0.631046,
-            0.203763, -0.0497544, 0.630959,
-            0.189355, -0.063628, 0.630619,
-            0.172759, -0.0748026, 0.630112,
-            0.154898, -0.0838297, 0.629494,
-            0.136272, -0.0911611, 0.628796,
-            0.117152, -0.0970963, 0.628039,
-            0.0977038, -0.101854, 0.627233,
-            0.0780322, -0.105591, 0.626388,
-            0.0582091, -0.108421, 0.625509,
-            0.038286, -0.110432, 0.624599,
-            0.0183017, -0.111691, 0.623662,
-            -0.00171338, -0.112254, 0.622698,
-            -0.0217345, -0.112166, 0.621708,
-            -0.041741, -0.111466, 0.620694,
-            -0.0617145, -0.110187, 0.619653,
-            -0.081638, -0.108356, 0.618587,
-            -0.101494, -0.105994, 0.617494,
-            -0.121268, -0.103126, 0.616374,
-            -0.140948, -0.0997492, 0.615223;
-
 	int points_on_rope = Y_gmm.rows();
 
     MatrixXf vertices = Y_gmm.transpose().replicate(1, 1);
@@ -559,6 +502,10 @@ std::chrono::steady_clock::time_point gripper_time = std::chrono::steady_clock::
 
 // sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
 sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
+    
+    // log time
+    std::chrono::steady_clock::time_point cur_time_cb = std::chrono::steady_clock::now();
+
     Mat mask_blue, mask_red_1, mask_red_2, mask_red, mask_yellow, mask, mask_rgb;
     Mat cur_image_orig = cv_bridge::toCvShare(image_msg, "bgr8")->image;
     cout << "finished first conversion" << std::endl;
@@ -938,7 +885,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(head_node, Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
     results_pub.publish(results);
 
-    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time_cb).count();
     ROS_WARN_STREAM("Total callback time difference: " + std::to_string(time_diff) + " ms");
 
     // change frame id
@@ -968,6 +915,29 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 int main(int argc, char **argv) {
     ros::init(argc, argv, "cdcpd2_test");
     ros::NodeHandle nh;
+
+    // load parameters
+    nh.getParam("/cdcpd2/num_of_nodes", num_of_nodes);
+    nh.getParam("/cdcpd2/use_eval_rope", use_eval_rope);
+    nh.getParam("/cdcpd2/is_gripper_info", is_gripper_info);
+    nh.getParam("/cdcpd2/use_real_gripper", use_real_gripper);
+    nh.getParam("/cdcpd2/alpha", alpha);
+    nh.getParam("/cdcpd2/beta", beta);
+    nh.getParam("/cdcpd2/lambda", lambda);
+    nh.getParam("/cdcpd2/zeta", zeta);
+    nh.getParam("/cdcpd2/leaf_size", leaf_size);
+    nh.getParam("/cdcpd2/k_spring", k_spring);
+    nh.getParam("/cdcpd2/is_sim", is_sim);
+    nh.getParam("/cdcpd2/is_rope", is_rope);
+    nh.getParam("/cdcpd2/translation_dir_deformability", translation_dir_deformability);
+    nh.getParam("/cdcpd2/translation_dis_deformability", translation_dis_deformability);
+    nh.getParam("/cdcpd2/rotation_deformability", rotation_deformability);
+    nh.getParam("/cdcpd2/left_x", left_x);
+    nh.getParam("/cdcpd2/left_y", left_y);
+    nh.getParam("/cdcpd2/left_z", left_z);
+    nh.getParam("/cdcpd2/right_x", right_x);
+    nh.getParam("/cdcpd2/right_y", right_y);
+    nh.getParam("/cdcpd2/right_z", right_z);
 
     nh_ptr = std::make_shared<ros::NodeHandle>(nh);
 
