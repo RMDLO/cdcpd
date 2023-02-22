@@ -6,3 +6,4 @@ demos/rosbags_compressed
 cdcpd/__pycache__/
 *.pyc
 cdcpd.egg-info/
+cdcpd/ros_numpy/
