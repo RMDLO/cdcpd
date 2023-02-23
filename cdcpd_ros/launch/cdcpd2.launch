@@ -1,6 +1,6 @@
 <launch>
     <!-- 0 -> statinary.bag; 1 -> with_gripper_perpendicular.bag -->
-    <arg name="bag_file" value="0" />
+    <arg name="bag_file" default="1" />
 
     <group if="$(eval arg('bag_file') == 0)">
         <node name="cdcpd2" pkg="cdcpd_ros" type="cdcpd2" output="screen">
@@ -14,7 +14,7 @@
             <param name="beta" value="1.0" />
             <param name="lambda" value="1.0" />
             <param name="zeta" value="10.0" />
-            <param name="leaf_size" value="0.012" />
+            <param name="leaf_size" value="0.005" />
 
             <param name="k_spring" value="100.0" />
             <param name="is_sim" value="false" />
@@ -44,7 +44,7 @@
             <param name="beta" value="1.0" />
             <param name="lambda" value="1.0" />
             <param name="zeta" value="10.0" />
-            <param name="leaf_size" value="0.012" />
+            <param name="leaf_size" value="0.008" />
 
             <param name="k_spring" value="100.0" />
             <param name="is_sim" value="false" />

@@ -903,11 +903,18 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     // pcl_conversions::toPCL(time, template_cloud_init->header.stamp);
     pcl_conversions::toPCL(time, out.cpd_predict->header.stamp);
 
+    // for synchronized evaluation
+    pcl::PCLPointCloud2 result_pc_pclpoincloud2;
+    sensor_msgs::PointCloud2 result_pc;
+    pcl::toPCLPointCloud2(*(out.gurobi_output), result_pc_pclpoincloud2);
+    pcl_conversions::moveFromPCL(result_pc_pclpoincloud2, result_pc);
+    result_pc.header = pc_msg->header;
+
     original_publisher.publish(out.original_cloud);
     masked_publisher.publish(out.masked_point_cloud);
     downsampled_publisher.publish(out.downsampled_cloud);
     pred_publisher.publish(out.cpd_predict);
-    output_publisher.publish(out.gurobi_output);
+    output_publisher.publish(result_pc);
 
     return mask_msg;
 }
