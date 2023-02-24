@@ -1,65 +1,54 @@
 <launch>
     <!-- 0 -> statinary.bag; 1 -> with_gripper_perpendicular.bag -->
-    <arg name="bag_file" default="1" />
+    <arg name="bag_file" default="0" />
 
-    <group if="$(eval arg('bag_file') == 0)">
-        <node name="cdcpd2" pkg="cdcpd_ros" type="cdcpd2" output="screen">
-            <param name="num_of_nodes" value="41" />
-            <param name="use_eval_rope" value="true" />
-            <param name="is_gripper_info" value="false" />
-            <param name="use_real_gripper" value="false" />
+    <arg name="left_x" value="0.1" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="left_y" value="0.0" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="left_z" value="0.6" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="right_x" value="-0.63" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="right_y" value="0.0" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="right_z" value="0.6" if="$(eval arg('bag_file') == 0)"/>
 
-            <!-- the params below are from the original cdcpd2 scripts -->
-            <param name="alpha" value="0.5" />
-            <param name="beta" value="1.0" />
-            <param name="lambda" value="1.0" />
-            <param name="zeta" value="10.0" />
-            <param name="leaf_size" value="0.005" />
+    <arg name="left_x" value="-0.1" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="left_y" value="0.0" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="left_z" value="0.6" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="right_x" value="-0.83" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="right_y" value="0.0" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="right_z" value="0.6" if="$(eval arg('bag_file') == 1)"/>
 
-            <param name="k_spring" value="100.0" />
-            <param name="is_sim" value="false" />
-            <param name="is_rope" value="true" />
-            <param name="translation_dir_deformability" value="1.0" />
-            <param name="translation_dis_deformability" value="1.0" />
-            <param name="rotation_deformability" value="10.0" />
-        
-            <param name="left_x" value="0.0" />
-            <param name="left_y" value="-0.05" />
-            <param name="left_z" value="0.6" />
-            <param name="right_x" value="0.0" />
-            <param name="right_y" value="-0.78" />
-            <param name="right_z" value="0.6" />
-        </node>
-    </group>
+    <arg name="left_x" value="0.0" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="left_y" value="-0.05" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="left_z" value="0.6" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="right_x" value="0.0" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="right_y" value="-0.78" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="right_z" value="0.6" if="$(eval arg('bag_file') == 2)"/>
 
-    <group if="$(eval arg('bag_file') == 1)">
-        <node name="cdcpd2" pkg="cdcpd_ros" type="cdcpd2" output="screen">
-            <param name="num_of_nodes" value="41" />
-            <param name="use_eval_rope" value="true" />
-            <param name="is_gripper_info" value="true" />
-            <param name="use_real_gripper" value="true" />
+    <node name="cdcpd2" pkg="cdcpd_ros" type="cdcpd2" output="screen">
+        <param name="num_of_nodes" value="41" />
+        <param name="use_eval_rope" value="true" />
+        <param name="is_gripper_info" value="false" />
+        <param name="use_real_gripper" value="false" />
 
-            <!-- the params below are from the original cdcpd2 scripts -->
-            <param name="alpha" value="0.5" />
-            <param name="beta" value="1.0" />
-            <param name="lambda" value="1.0" />
-            <param name="zeta" value="10.0" />
-            <param name="leaf_size" value="0.008" />
+        <!-- the params below are from the original cdcpd2 scripts -->
+        <param name="alpha" value="0.5" />
+        <param name="beta" value="1.0" />
+        <param name="lambda" value="1.0" />
+        <param name="zeta" value="10.0" />
+        <param name="leaf_size" value="0.005" />
 
-            <param name="k_spring" value="100.0" />
-            <param name="is_sim" value="false" />
-            <param name="is_rope" value="true" />
-            <param name="translation_dir_deformability" value="1.0" />
-            <param name="translation_dis_deformability" value="1.0" />
-            <param name="rotation_deformability" value="10.0" />
-
-            <param name="left_x" value="-0.1" />
-            <param name="left_y" value="0.0" />
-            <param name="left_z" value="0.6" />
-            <param name="right_x" value="-0.83" />
-            <param name="right_y" value="0.0" />
-            <param name="right_z" value="0.6" />
-        </node>
-    </group>
+        <param name="k_spring" value="100.0" />
+        <param name="is_sim" value="false" />
+        <param name="is_rope" value="true" />
+        <param name="translation_dir_deformability" value="1.0" />
+        <param name="translation_dis_deformability" value="1.0" />
+        <param name="rotation_deformability" value="10.0" />
+    
+        <param name="left_x" value="$(arg left_x)" />
+        <param name="left_y" value="$(arg left_y)" />
+        <param name="left_z" value="$(arg left_z)" />
+        <param name="right_x" value="$(arg right_x)" />
+        <param name="right_y" value="$(arg right_y)" />
+        <param name="right_z" value="$(arg right_z)" />
+    </node>
     
 </launch>
