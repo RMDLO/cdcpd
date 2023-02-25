@@ -23,11 +23,19 @@
     <arg name="right_y" value="-0.78" if="$(eval arg('bag_file') == 2)"/>
     <arg name="right_z" value="0.6" if="$(eval arg('bag_file') == 2)"/>
 
+    <arg name="is_gripper_info" value="false" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 2)"/>
+
+    <arg name="use_real_gripper" value="false" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="use_real_gripper" value="true" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="use_real_gripper" value="true" if="$(eval arg('bag_file') == 2)"/>
+
     <node name="cdcpd2" pkg="cdcpd_ros" type="cdcpd2" output="screen">
         <param name="num_of_nodes" value="41" />
         <param name="use_eval_rope" value="true" />
-        <param name="is_gripper_info" value="false" />
-        <param name="use_real_gripper" value="false" />
+        <param name="is_gripper_info" value="$(arg is_gripper_info)" />
+        <param name="use_real_gripper" value="$(arg use_real_gripper)" />
 
         <!-- the params below are from the original cdcpd2 scripts -->
         <param name="alpha" value="0.5" />
