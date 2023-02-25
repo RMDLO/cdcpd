@@ -9,7 +9,23 @@ def chroma_key_rope(points, colors):
     # hsv_img[:, :, 0] /= 360.0
     h, s, v = np.transpose(hsv_img, axes=[2, 0, 1])
     points_z = points[:, :, 0]
-    mask = ne.evaluate("(h > 90) & (s > 90) & (h < 120) & (s < 255) & ~(points_z != points_z)")
+    mask = ne.evaluate("(((h > 90) & (s > 80) & (v > 80) & (h < 130) & (s < 255) & (v < 255)) | \
+                         ((h > 130) & (s > 60) & (v > 50) & (h < 255) & (s < 255) & (v < 255)) | \
+                         ((h > 0) & (s > 60) & (v > 50) & (h < 10) & (s < 255) & (v < 255)) | \
+                         ((h > 15) & (s > 100) & (v > 80) & (h < 40) & (s < 255) & (v < 255))) & ~(points_z != points_z)")
+
+    # std::vector<int> lower_blue = {90, 80, 80};
+    # std::vector<int> upper_blue = {130, 255, 255};
+
+    # std::vector<int> lower_red_1 = {130, 60, 50};
+    # std::vector<int> upper_red_1 = {255, 255, 255};
+
+    # std::vector<int> lower_red_2 = {0, 60, 50};
+    # std::vector<int> upper_red_2 = {10, 255, 255};
+
+    # std::vector<int> lower_yellow = {15, 100, 80};
+    # std::vector<int> upper_yellow = {40, 255, 255};
+
     # lower = (90, 90, 90)
     # upper = (255, 255, 120)
     # mask = cv2.inRange(hsv_img, lower, upper)

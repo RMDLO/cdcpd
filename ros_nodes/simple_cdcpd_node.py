@@ -11,6 +11,7 @@ from cdcpd.cv_utils import chroma_key_rope
 from cdcpd.prior import ThresholdVisibilityPrior
 
 import cv2
+import time
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 from scipy.spatial.transform import Rotation as R
@@ -121,13 +122,13 @@ proj_matrix_full = np.array([[918.359130859375,              0.0, 645.8908081054
                              [             0.0, 916.265869140625,   354.02392578125, 0.0], \
                              [             0.0,              0.0,               1.0, 0.0]])
 
-template_verts, template_edges = build_line(0.46, 37)
+template_verts, template_edges = build_line(0.8, 40)
 key_func = chroma_key_rope
 
 prior = ThresholdVisibilityPrior(proj_matrix)
 optimizer = DistanceConstrainedOptimizer(template=template_verts, edges=template_edges)
 
-cpd_params = CPDParams(beta=8.0)
+cpd_params = CPDParams(beta=1)
 cdcpd_params = CDCPDParams(prior=prior, optimizer=optimizer, down_sample_size=500, use_recovery=False)
 cdcpd = ConstrainedDeformableCPD(template=template_verts,
                                  cdcpd_params=cdcpd_params)
@@ -139,6 +140,9 @@ tracking_img_pub = rospy.Publisher ('/tracking_img', Image, queue_size=10)
 
 def callback(msg: PointCloud2):
     global occlusion_mask_rgb
+
+    # log time
+    cur_time_cb = time.time()
 
     # converting ROS message to dense numpy array
     data = ros_numpy.numpify(msg)
@@ -161,6 +165,9 @@ def callback(msg: PointCloud2):
     tracking_result = cdcpd.step(point_cloud=point_cloud_img,
                                  mask=mask_img,
                                  cpd_param=cpd_params)
+    
+    # cv2.imshow("mask", mask_img.astype(np.uint8)*255)
+    # cv2.waitKey(10)
 
     # converting tracking result to ROS message
     if tracking_result.dtype is not np.float32:
@@ -173,45 +180,46 @@ def callback(msg: PointCloud2):
     results = ndarray2MarkerArray(tracking_result, "camera_color_optical_frame", [255, 150, 0, 0.75], [0, 255, 0, 0.75])
     results_pub.publish(results)
 
-    # project and pub tracking image
-    mask_dis_threshold = 10
-    nodes_h = np.hstack((tracking_result, np.ones((len(tracking_result), 1))))
+    # # project and pub tracking image
+    # mask_dis_threshold = 10
+    # nodes_h = np.hstack((tracking_result, np.ones((len(tracking_result), 1))))
+    # # proj_matrix: 3*4; nodes_h.T: 4*M; result: 3*M
+    # image_coords = np.matmul(proj_matrix_full, nodes_h.T).T
+    # us = (image_coords[:, 0] / image_coords[:, 2]).astype(int)
+    # vs = (image_coords[:, 1] / image_coords[:, 2]).astype(int)
 
-    # proj_matrix: 3*4; nodes_h.T: 4*M; result: 3*M
-    image_coords = np.matmul(proj_matrix_full, nodes_h.T).T
-    us = (image_coords[:, 0] / image_coords[:, 2]).astype(int)
-    vs = (image_coords[:, 1] / image_coords[:, 2]).astype(int)
+    # us = np.where(us >= 1280, 1279, us)
+    # vs = np.where(vs >= 720, 719, vs)
 
-    us = np.where(us >= 1280, 1279, us)
-    vs = np.where(vs >= 720, 719, vs)
+    # uvs = np.vstack((vs, us)).T
+    # uvs_t = tuple(map(tuple, uvs.T))
 
-    uvs = np.vstack((vs, us)).T
-    uvs_t = tuple(map(tuple, uvs.T))
+    # # invert bmask for distance transform
+    # bmask_transformed = ndimage.distance_transform_edt(1-mask_img.astype(np.uint8))
+    # vis = bmask_transformed[uvs_t]
 
-    # invert bmask for distance transform
-    bmask_transformed = ndimage.distance_transform_edt(1-mask_img.astype(np.uint8))
-    vis = bmask_transformed[uvs_t]
+    # cur_image_masked = cv2.bitwise_and(color_img, occlusion_mask_rgb)
+    # tracking_img = (color_img*0.5 + cur_image_masked*0.5).astype(np.uint8)
 
-    cur_image_masked = cv2.bitwise_and(color_img, occlusion_mask_rgb)
-    tracking_img = (color_img*0.5 + cur_image_masked*0.5).astype(np.uint8)
+    # for i in range (len(image_coords)):
+    #     # draw circle
+    #     uv = (us[i], vs[i])
+    #     if vis[i] < mask_dis_threshold:
+    #         cv2.circle(tracking_img, uv, 5, (255, 150, 0), -1)
+    #     else:
+    #         cv2.circle(tracking_img, uv, 5, (255, 0, 0), -1)
 
-    for i in range (len(image_coords)):
-        # draw circle
-        uv = (us[i], vs[i])
-        if vis[i] < mask_dis_threshold:
-            cv2.circle(tracking_img, uv, 5, (255, 150, 0), -1)
-        else:
-            cv2.circle(tracking_img, uv, 5, (255, 0, 0), -1)
-
-        # draw line
-        if i != len(image_coords)-1:
-            if vis[i] < mask_dis_threshold:
-                cv2.line(tracking_img, uv, (us[i+1], vs[i+1]), (0, 255, 0), 2)
-            else:
-                cv2.line(tracking_img, uv, (us[i+1], vs[i+1]), (255, 0, 0), 2)
+    #     # draw line
+    #     if i != len(image_coords)-1:
+    #         if vis[i] < mask_dis_threshold:
+    #             cv2.line(tracking_img, uv, (us[i+1], vs[i+1]), (0, 255, 0), 2)
+    #         else:
+    #             cv2.line(tracking_img, uv, (us[i+1], vs[i+1]), (255, 0, 0), 2)
     
-    tracking_img_msg = ros_numpy.msgify(Image, tracking_img, 'rgb8')
-    tracking_img_pub.publish(tracking_img_msg)
+    # tracking_img_msg = ros_numpy.msgify(Image, tracking_img, 'rgb8')
+    # tracking_img_pub.publish(tracking_img_msg)
+
+    rospy.loginfo("total time take: " + str(time.time() - cur_time_cb))
 
 
 def main():
