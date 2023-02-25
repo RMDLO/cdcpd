@@ -8,11 +8,12 @@ def chroma_key_rope(points, colors):
     hsv_img = cv2.cvtColor(colors, code=cv2.COLOR_RGB2HSV)
     # hsv_img[:, :, 0] /= 360.0
     h, s, v = np.transpose(hsv_img, axes=[2, 0, 1])
-    points_z = points[:, :, 0]
+    points_z = points[:, :, 2]
     mask = ne.evaluate("(((h > 90) & (s > 80) & (v > 80) & (h < 130) & (s < 255) & (v < 255)) | \
                          ((h > 130) & (s > 60) & (v > 50) & (h < 255) & (s < 255) & (v < 255)) | \
                          ((h > 0) & (s > 60) & (v > 50) & (h < 10) & (s < 255) & (v < 255)) | \
-                         ((h > 15) & (s > 100) & (v > 80) & (h < 40) & (s < 255) & (v < 255))) & ~(points_z != points_z)")
+                         ((h > 15) & (s > 100) & (v > 80) & (h < 40) & (s < 255) & (v < 255))) & \
+                         (points_z > 0.58) & ~(points_z != points_z)")
 
     # std::vector<int> lower_blue = {90, 80, 80};
     # std::vector<int> upper_blue = {130, 255, 255};

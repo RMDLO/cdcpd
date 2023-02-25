@@ -6,7 +6,7 @@ import ros_numpy
 from cdcpd.cdcpd import CDCPDParams, ConstrainedDeformableCPD
 from cdcpd.cpd import CPDParams
 from cdcpd.optimizer import DistanceConstrainedOptimizer
-from cdcpd.geometry_utils import build_line
+from cdcpd.geometry_utils import build_line_0, build_line_1, build_line_2
 from cdcpd.cv_utils import chroma_key_rope
 from cdcpd.prior import ThresholdVisibilityPrior
 
@@ -16,6 +16,8 @@ from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 from scipy.spatial.transform import Rotation as R
 from scipy import ndimage
+
+import sys
 
 def pt2pt_dis_sq(pt1, pt2):
     return np.sum(np.square(pt1 - pt2))
@@ -122,7 +124,13 @@ proj_matrix_full = np.array([[918.359130859375,              0.0, 645.8908081054
                              [             0.0, 916.265869140625,   354.02392578125, 0.0], \
                              [             0.0,              0.0,               1.0, 0.0]])
 
-template_verts, template_edges = build_line(0.8, 40)
+# if sys.argv[1] == 0:
+template_verts, template_edges = build_line_0(0.8, 40)
+if int(sys.argv[1]) == 1:
+    template_verts, template_edges = build_line_1(0.8, 40)
+elif int(sys.argv[1]) == 2:
+    template_verts, template_edges = build_line_2(0.8, 40)
+
 key_func = chroma_key_rope
 
 prior = ThresholdVisibilityPrior(proj_matrix)
@@ -225,7 +233,7 @@ def callback(msg: PointCloud2):
 def main():
     rospy.init_node('cdcpd_tracker_node')
     # rospy.Subscriber("/kinect2_victor_head/qhd/points", PointCloud2, callback, queue_size=2)
-    rospy.Subscriber("/camera/depth/color/points", PointCloud2, callback, queue_size=2)
+    rospy.Subscriber("/camera/depth/color/points", PointCloud2, callback, queue_size=1)
     rospy.Subscriber('/mask_with_occlusion', Image, update_occlusion_mask)
     rospy.spin()
 

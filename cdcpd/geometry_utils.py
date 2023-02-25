@@ -1,10 +1,30 @@
 import numpy as np
 
 
-def build_line(length=1.0, num_nodes=50):
+def build_line_0(length=1.0, num_nodes=50):
     verts = np.zeros((num_nodes, 3), dtype=np.float32)
     verts[:, 1] = 0.15
     verts[:, 0] = np.linspace(-0.05-length/2, -0.05+length/2, num_nodes)
+    verts[:, 2] = 0.6
+    edges = np.empty((num_nodes - 1, 2), dtype=np.uint32)
+    edges[:, 0] = range(0, num_nodes - 1)
+    edges[:, 1] = range(1, num_nodes)
+    return verts, edges
+
+def build_line_1(length=1.0, num_nodes=50):
+    verts = np.zeros((num_nodes, 3), dtype=np.float32)
+    verts[:, 1] = np.linspace(-0.05-length/2, -0.05+length/2, num_nodes)
+    verts[:, 0] = 0.15
+    verts[:, 2] = 0.6
+    edges = np.empty((num_nodes - 1, 2), dtype=np.uint32)
+    edges[:, 0] = range(0, num_nodes - 1)
+    edges[:, 1] = range(1, num_nodes)
+    return verts, edges
+
+def build_line_2(length=1.0, num_nodes=50):
+    verts = np.zeros((num_nodes, 3), dtype=np.float32)
+    verts[:, 1] = 0
+    verts[:, 0] = np.linspace(0.25-length/2, 0.25+length/2, num_nodes)
     verts[:, 2] = 0.6
     edges = np.empty((num_nodes - 1, 2), dtype=np.uint32)
     edges[:, 0] = range(0, num_nodes - 1)

@@ -13,7 +13,7 @@ import std_msgs.msg
 import sensor_msgs.point_cloud2 as pcl2
 import time
 
-pc_pub = rospy.Publisher ('/pts', PointCloud2, queue_size=10)
+pc_pub = rospy.Publisher ('/pts', PointCloud2, queue_size=1)
 
 class CDCPDParams:
     def __init__(self,
