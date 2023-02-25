@@ -45,8 +45,8 @@
 #include <geometry_msgs/TransformStamped.h>
 
 #include <cdcpd_ros/Float32MultiArrayStamped.h>
-#include <victor_hardware_interface/Robotiq3FingerStatus_sync.h>
-#include <victor_hardware_interface/Robotiq3FingerStatus.h>
+#include <victor_hardware_interface_msgs/Robotiq3FingerStatus_sync.h>
+#include <victor_hardware_interface_msgs/Robotiq3FingerStatus.h>
 
 #include <Eigen/Geometry>
 
