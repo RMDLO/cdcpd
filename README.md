@@ -29,28 +29,16 @@ Installation
 
 #### Core Package
 
-install miniconda https://docs.conda.io/en/latest/miniconda.html
-
-create conda virtual enviornment, you can name it whatever you want:
-```
-conda create --name cpdenv python
-conda activate cpdenv
-```
-
-If you use a IDE such as pycharm or vscode, remember to set project interpretor to this virtual enviornment.
-
-For all following oprations, make sure the newly crearted virtual enviornment is activated. The command line should show the name of virtual enviornment in brackets:
-`(cpdenv) username@hostname:`
-
-clone repository:
+Clone repository:
 ```
 git clone git@github.com:UM-ARM-Lab/cdcpd.git --branch v0.1.0 --single-branch
 ```
 
-install pip package:
+Install pip package:
 ```
 cd cdcpd
-pip install -e .
+pip3 install -e .
+pip3 install gurobipy
 ```
 
 -e installs the library in edit mode, thus changes made in the repository will be affected globally
@@ -58,18 +46,7 @@ pip install -e .
 
 You may noticed that a package named [glplotlib](https://github.com/cheng-chi/glplotlib) is installed by pip. glplotlib is another opensource library developed by Cheng Chi for virualizing 3D point cloud with better performance (comparing to matplotlib).
 
-install opencv:
-```
-conda install opencv
-```
-
-Gurobi as a propriotoray optimization package that we use. Please obtain a [free academic license](https://user.gurobi.com/download/licenses/free-academic)
-
-install gurobi:
-```
-conda install gurobi -c gurobi
-```
-install gurobi key with [grbgetkey](https://www.gurobi.com/documentation/8.1/quickstart_mac/retrieving_a_free_academic.html).
+Install gurobi key with [grbgetkey](https://www.gurobi.com/documentation/8.1/quickstart_mac/retrieving_a_free_academic.html).
 Note that gurobi installation requires university network. If you are not on campus, follow this instruction to setup [UMVPN](https://documentation.its.umich.edu/vpn/vpn-linux-vpn-instructions).
 
 

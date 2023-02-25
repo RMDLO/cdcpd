@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import rospy
 from sensor_msgs.msg import PointCloud2, Image
 import numpy as np
@@ -18,6 +20,7 @@ from scipy.spatial.transform import Rotation as R
 from scipy import ndimage
 
 import sys
+import message_filters
 
 def pt2pt_dis_sq(pt1, pt2):
     return np.sum(np.square(pt1 - pt2))
@@ -142,11 +145,11 @@ cdcpd = ConstrainedDeformableCPD(template=template_verts,
                                  cdcpd_params=cdcpd_params)
 
 # initialize ROS publisher
-pub = rospy.Publisher("/cdcpd_tracker/points", PointCloud2, queue_size=10)
+pub = rospy.Publisher("/cdcpd_results_pc", PointCloud2, queue_size=10)
 results_pub = rospy.Publisher("/results", MarkerArray, queue_size=10)
 tracking_img_pub = rospy.Publisher ('/tracking_img', Image, queue_size=10)
 
-def callback(msg: PointCloud2):
+def callback(_, msg):
     global occlusion_mask_rgb
 
     # log time
@@ -231,10 +234,16 @@ def callback(msg: PointCloud2):
 
 
 def main():
-    rospy.init_node('cdcpd_tracker_node')
+    rospy.init_node('cdcpd')
     # rospy.Subscriber("/kinect2_victor_head/qhd/points", PointCloud2, callback, queue_size=2)
-    rospy.Subscriber("/camera/depth/color/points", PointCloud2, callback, queue_size=1)
+    # rospy.Subscriber("/camera/depth/color/points", PointCloud2, callback, queue_size=2)
     rospy.Subscriber('/mask_with_occlusion', Image, update_occlusion_mask)
+
+    rgb_sub = message_filters.Subscriber('/camera/color/image_raw', Image)
+    pc_sub = message_filters.Subscriber('/camera/depth/color/points', PointCloud2)
+    ts = message_filters.TimeSynchronizer([rgb_sub, pc_sub], queue_size=10)
+    ts.registerCallback(callback)
+
     rospy.spin()
 
 
