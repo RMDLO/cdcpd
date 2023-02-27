@@ -36,7 +36,7 @@ find_package(catkin REQUIRED COMPONENTS
   arc_utilities
   message_generation
   cdcpd
-  victor_hardware_interface
+  victor_hardware_interface_msgs
 )
 find_package(CGAL REQUIRED COMPONENTS Core Qt5)
 find_package(Qt5 QUIET COMPONENTS Qt5 Core Xml Script OpenGL Svg)
