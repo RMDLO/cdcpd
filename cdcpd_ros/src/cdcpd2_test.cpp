@@ -106,6 +106,13 @@ double translation_dir_deformability;
 double translation_dis_deformability;
 double rotation_deformability;
 
+double total_time_sum = 0;
+double frame_num = 0;
+
+double total_data_segment_time_sum = 0;
+
+double total_downsampling_time_sum = 0;
+
 // rope pos initialization
 double left_x; 
 double left_y; 
@@ -510,6 +517,9 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     }
 
     // log time
+    std::chrono::high_resolution_clock::time_point start_time_cb = std::chrono::high_resolution_clock::now();
+
+    // log time
     std::chrono::steady_clock::time_point cur_time_cb = std::chrono::steady_clock::now();
 
     Mat mask_blue, mask_red_1, mask_red_2, mask_red, mask_yellow, mask, mask_rgb;
@@ -583,6 +593,11 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     // publish mask
     sensor_msgs::ImagePtr mask_msg = nullptr;
     mask_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", mask_rgb).toImageMsg();
+
+    cdcpd.time_diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start_time_cb).count();
+    total_data_segment_time_sum += cdcpd.time_diff;
+    ROS_INFO_STREAM("Before pcl operations(data segmentation): " + std::to_string(cdcpd.time_diff) + " microseconds");
+    cdcpd.cur_time = std::chrono::high_resolution_clock::now();
 
     // deal with point cloud 
     pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
@@ -663,7 +678,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     sor.setInputCloud (cloudPtr);
 
     double time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0;
-    if (time_from_start > 5.0) {
+
+    double cutoff_time = 5.0;
+    if (bag_file == 0) {
+        cutoff_time = 8.0;
+    }
+    if (time_from_start > cutoff_time) {
         sor.setLeafSize (leaf_size, leaf_size, leaf_size);
     }
     else {
@@ -678,6 +698,11 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     sor.filter (cur_pc_downsampled);
 
     pcl::fromPCLPointCloud2(cur_pc_downsampled, downsampled_xyz);
+
+    std::cout << "1111111";    cdcpd.time_diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - cdcpd.cur_time).count();
+    total_downsampling_time_sum += cdcpd.time_diff;
+    ROS_INFO_STREAM("Downsampling time: " + std::to_string(cdcpd.time_diff) + " microseconds");
+    cdcpd.cur_time = std::chrono::high_resolution_clock::now();
 
     if (!initialized) {
         MatrixXf X = downsampled_xyz.getMatrixXfMap().topRows(3).transpose();
@@ -917,8 +942,8 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     // log time
     gripper_time = std::chrono::steady_clock::now();
 
-    // log time
-    std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+    // // log time
+    // std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 
     if (is_gripper_info) {
         // pred_choice:
@@ -940,6 +965,10 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         // std::cout << "pred 0" << std::endl;
         out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
     }
+
+    cdcpd.time_diff = std::chrono::duration_cast<std::chrono::microseconds>(cdcpd.end_time - start_time_cb).count();
+    total_time_sum += cdcpd.time_diff;
+    ROS_INFO_STREAM("Total time : " + std::to_string(cdcpd.time_diff) + " microseconds");
 
     
     template_cloud = out.gurobi_output;
@@ -963,8 +992,8 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(head_node, Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
     results_pub.publish(results);
 
-    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time_cb).count();
-    ROS_WARN_STREAM("Total callback time difference: " + std::to_string(time_diff) + " ms");
+    // double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time_cb).count();
+    // ROS_WARN_STREAM("Total callback time difference: " + std::to_string(time_diff) + " ms");
 
     // change frame id
     out.gurobi_output->header.frame_id = frame_id;
@@ -993,6 +1022,14 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     downsampled_publisher.publish(out.downsampled_cloud);
     pred_publisher.publish(out.cpd_predict);
     output_publisher.publish(result_pc);
+
+    frame_num += 1;
+    ROS_INFO_STREAM("1111Total data segment time: " + std::to_string(total_data_segment_time_sum/frame_num) + " microseconds");
+    ROS_INFO_STREAM("1111Total downsampling time: " + std::to_string(total_downsampling_time_sum/frame_num) + " microseconds");
+    ROS_INFO_STREAM("1111Total preprocessing time: " + std::to_string(cdcpd.total_pre_processing_time_sum/frame_num) + " microseconds");
+    ROS_INFO_STREAM("1111Total tracking time: " + std::to_string(cdcpd.total_tracking_time_sum/frame_num) + " microseconds");
+    ROS_INFO_STREAM("1111Total Postprocessing time: " + std::to_string(cdcpd.total_post_processing_sum/frame_num) + " microseconds");
+    ROS_INFO_STREAM("1111Total total time: " + std::to_string(total_time_sum/frame_num) + " microseconds");
 
     return mask_msg;
 }

@@ -100,6 +100,13 @@ public:
         Eigen::Vector3f position;
        int template_index;
     };
+
+    double time_diff = 0;
+    double total_pre_processing_time_sum = 0;
+    double total_tracking_time_sum = 0;
+    double total_post_processing_sum = 0;
+    std::chrono::high_resolution_clock::time_point end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::high_resolution_clock::time_point cur_time = std::chrono::high_resolution_clock::now();
 	
 	CDCPD();
 

@@ -1595,10 +1595,14 @@ CDCPD::Output CDCPD::operator()(
         pred_fixed_points.push_back(pt);
     }
 
-    // log time
-    std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 
     Matrix3Xf TY, TY_pred;
+
+    time_diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - cur_time).count();
+    total_pre_processing_time_sum += time_diff;
+    ROS_INFO_STREAM("preprocessing time: " + std::to_string(time_diff) + " microseconds");
+    cur_time = std::chrono::high_resolution_clock::now();
+
     if (is_prediction) {
         // start = std::chrono::system_clock::now(); 
         ROS_WARN_STREAM("used prediction");
@@ -1635,6 +1639,11 @@ CDCPD::Output CDCPD::operator()(
         TY = cheng_cpd(X, Y, depth, mask, intrinsics_eigen);
     } 
 
+    time_diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - cur_time).count();
+    total_tracking_time_sum += time_diff;
+    ROS_INFO_STREAM("Tracking process time : " + std::to_string(time_diff) + " microseconds");
+    cur_time = std::chrono::high_resolution_clock::now();
+
 
     // Next step: optimization.
     #ifdef SHAPE_COMP
@@ -1646,8 +1655,8 @@ CDCPD::Output CDCPD::operator()(
 	Matrix3Xf Y_opt = opt(TY, template_edges, pred_fixed_points, self_intersection, interation_constrain);
 	// end = std::chrono::system_clock::now(); std::cout << "opt: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
 
-    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
-    ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
+    // double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    // ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
 
     // Set the min and max for the box filter for next time
     last_lower_bounding_box = Y_opt.rowwise().minCoeff();
@@ -1656,6 +1665,11 @@ CDCPD::Output CDCPD::operator()(
     PointCloud::Ptr cdcpd_out = mat_to_cloud(Y_opt);
     PointCloud::Ptr cdcpd_cpd = mat_to_cloud(TY);
     PointCloud::Ptr cdcpd_pred = mat_to_cloud(TY_pred);
+
+    end_time = std::chrono::high_resolution_clock::now();
+    time_diff = std::chrono::duration_cast<std::chrono::microseconds>(end_time - cur_time).count();
+    total_post_processing_sum += time_diff;
+    ROS_WARN_STREAM("Post processing time : " + std::to_string(time_diff) + " ms");
 
     return CDCPD::Output {
         #ifdef ENTIRE
@@ -1875,10 +1889,16 @@ CDCPD::Output CDCPD::operator()(
     	}
 	}
     
-    // log time
-    std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+    // // log time
+    // std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 
     Matrix3Xf TY, TY_pred;
+
+    time_diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - cur_time).count();
+    total_pre_processing_time_sum += time_diff;
+    ROS_INFO_STREAM("preprocessing time: " + std::to_string(time_diff) + " microseconds");
+    cur_time = std::chrono::high_resolution_clock::now();
+
     if (is_prediction) {
         // start = std::chrono::system_clock::now(); 
 		if (model != NULL) {
@@ -1918,7 +1938,10 @@ CDCPD::Output CDCPD::operator()(
         TY = cheng_cpd(X, Y, depth, mask, intrinsics_eigen);
     } 
 
-
+    time_diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - cur_time).count();
+    total_tracking_time_sum += time_diff;
+    ROS_INFO_STREAM("Tracking process time : " + std::to_string(time_diff) + " microseconds");
+    cur_time = std::chrono::high_resolution_clock::now();
 
     // Next step: optimization.
     // ???: most likely not 1.0
@@ -1931,8 +1954,8 @@ CDCPD::Output CDCPD::operator()(
     Matrix3Xf Y_opt = opt(TY, template_edges, pred_fixed_points, self_intersection, interation_constrain);
     // end = std::chrono::system_clock::now(); std::cout << "opt: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
 
-    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
-    ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
+    // double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    // ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
 
     // Set the min and max for the box filter for next time
     last_lower_bounding_box = Y_opt.rowwise().minCoeff();
@@ -1941,6 +1964,11 @@ CDCPD::Output CDCPD::operator()(
     PointCloud::Ptr cdcpd_out = mat_to_cloud(Y_opt);
     PointCloud::Ptr cdcpd_cpd = mat_to_cloud(TY);
     PointCloud::Ptr cdcpd_pred = mat_to_cloud(TY_pred);
+
+    end_time = std::chrono::high_resolution_clock::now();
+    time_diff = std::chrono::duration_cast<std::chrono::microseconds>(end_time - cur_time).count();
+    total_post_processing_sum += time_diff;
+    ROS_WARN_STREAM("Post processing time : " + std::to_string(time_diff) + " ms");
 
     return CDCPD::Output {
         #ifdef ENTIRE
@@ -2047,8 +2075,8 @@ CDCPD::Output CDCPD::operator()(
     const Matrix3Xf& entire = entire_cloud.getMatrixXfMap().topRows(3);
     #endif
 
-    // log time
-    std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+    // // log time
+    // std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 
     Matrix3Xf TY, TY_pred;
     if (is_prediction) {
@@ -2097,8 +2125,8 @@ CDCPD::Output CDCPD::operator()(
     Matrix3Xf Y_opt = opt(TY, template_edges, fixed_points, self_intersection, interation_constrain);
     // end = std::chrono::system_clock::now(); std::cout << "opt: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
 
-    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
-    ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
+    // double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    // ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
 
     // Set the min and max for the box filter for next time
     last_lower_bounding_box = Y_opt.rowwise().minCoeff();
