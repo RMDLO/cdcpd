@@ -182,6 +182,7 @@ public:
 					  const int pred_choice = 0,
                       const std::vector<FixedPoint>& fixed_points = {});
 
+    float kvis;
 
 private:
     Eigen::VectorXf visibility_prior(const Eigen::Matrix3Xf& vertices,
@@ -256,7 +257,6 @@ private:
     double annealing_factor;
     double k;
     int max_iterations;
-    float kvis;
 	float zeta;
     bool use_recovery;
     // std::vector<Eigen::MatrixXf> Q;

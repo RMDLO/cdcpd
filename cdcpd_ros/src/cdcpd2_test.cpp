@@ -498,11 +498,17 @@ std::chrono::steady_clock::time_point start_time;
 
 // ---------- CALLBACK ----------
 bool initialized = false;
+MatrixXf Y_init;
+
 std::chrono::steady_clock::time_point gripper_time = std::chrono::steady_clock::now();
 
 // sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
 sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
     
+    if (!initialized) {
+        start_time = std::chrono::steady_clock::now();
+    }
+
     // log time
     std::chrono::steady_clock::time_point cur_time_cb = std::chrono::steady_clock::now();
 
@@ -611,8 +617,21 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
             depth_image.at<uchar>(i, j) = cloud_xyz(j, i).z;
 
             // should not pick up points from the gripper
-            if (cloud_xyz(j, i).z < 0.58) {
-                continue;
+            if (bag_file == 2) {
+                if (cloud_xyz(j, i).x < -0.15 || cloud_xyz(j, i).y < -0.15 || cloud_xyz(j, i).z < 0.58) {
+                    continue;
+                }
+            }
+            else if (bag_file == 1) {
+                if ((cloud_xyz(j, i).x < 0.0 && cloud_xyz(j, i).y < 0.05) || cloud_xyz(j, i).z < 0.58 || 
+                        cloud_xyz(j, i).x < -0.2 || (cloud_xyz(j, i).x < 0.1 && cloud_xyz(j, i).y < -0.05)) {
+                    continue;
+                }
+            }
+            else {
+                if (cloud_xyz(j, i).z < 0.58) {
+                    continue;
+                }
             }
 
             if (mask.at<uchar>(i, j) != 0) {
@@ -642,7 +661,20 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     pcl::PCLPointCloud2 cur_pc_downsampled;
     pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
     sor.setInputCloud (cloudPtr);
-    sor.setLeafSize (leaf_size, leaf_size, leaf_size);
+
+    double time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0;
+    if (time_from_start > 5.0) {
+        sor.setLeafSize (leaf_size, leaf_size, leaf_size);
+    }
+    else {
+        if (bag_file == 0) {
+            sor.setLeafSize (0.002, 0.002, 0.002);
+        }
+        else {
+            sor.setLeafSize (0.0035, 0.0035, 0.0035);
+        }
+    }
+    
     sor.filter (cur_pc_downsampled);
 
     pcl::fromPCLPointCloud2(cur_pc_downsampled, downsampled_xyz);
@@ -654,6 +686,16 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
         MatrixXf Y_gmm = reg(X, num_of_nodes, 0.05, 100);
         Y_gmm = sort_pts(Y_gmm);
+
+        Y_init = Y_gmm.replicate(1, 1);
+        if (sqrt(pow(Y_gmm(0, 0)-head_node(0, 0), 2) + pow(Y_gmm(0, 1)-head_node(0, 1), 2) + pow(Y_gmm(0, 2)-head_node(0, 2), 2)) > 0.05) {
+            for (int i = 0; i < Y_gmm.rows(); i ++) {
+                Y_init.row(Y_gmm.rows()-1-i) = Y_gmm.row(i).replicate(1, 1);
+            }
+        }
+        else {
+            Y_init = Y_gmm.replicate(1, 1);
+        }
 
         // std::cout << "found Y" << std::endl;
 
@@ -697,7 +739,21 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
                     zeta,
                     cylinder_data,
                     is_sim);
+        cdcpd.kvis = 0;
         // end of cdcpd2 init
+
+        // Eigen::Matrix3f intrinsics_eigen(3, 3);
+        // intrinsics_eigen << 918.359130859375, 0.0, 645.8908081054688,
+        //                     0.0, 916.265869140625, 354.02392578125,
+        //                     0.0, 0.0, 1.0;
+        // intrinsics_eigen.cast<float>();
+
+        // for (int i = 0; i < 10; i ++) {
+        //     std::cout << "running initializaiton cpd" << std::endl;
+        //     cdcpd.cpd(X, template_vertices, Y_init.transpose(), depth_image, mask, intrinsics_eigen);
+        // }
+        
+        // template_cloud = Matrix3Xf2pcptr(template_vertices);
 
         initialized = true;
     }
@@ -715,17 +771,29 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     
     Eigen::Vector3f left_pos((float)gripper_pt[0], (float)gripper_pt[1], (float)gripper_pt[2]);
     CDCPD::FixedPoint left_gripper = {left_pos, 0};
+
     Eigen::Vector3f right_pos((float)gripper_pt[0], (float)gripper_pt[1], (float)gripper_pt[2]);
+
+    // std:cout << "before right pose" << std::endl;
+    // std::cout << Y_init(Y_init.rows()-1, 0) << "; " << Y_init(Y_init.rows()-1, 1) << "; " << Y_init(Y_init.rows()-1, 2) << std::endl;
+    // Eigen::Vector3f right_pos(Y_init(Y_init.rows()-1, 0), Y_init(Y_init.rows()-1, 1), Y_init(Y_init.rows()-1, 2));
+    // CDCPD::FixedPoint right_gripper = {right_pos, Y_init.rows()-1};
+
     CDCPD::FixedPoint right_gripper = {right_pos, 0};
+
     fixed_points.push_back(left_gripper);
     fixed_points.push_back(right_gripper);
 
+    // std::cout << right_pos << std::endl;
+
     std::vector<bool> is_grasped = {false, true};
+    // std::vector<bool> is_grasped = {true, true};
 
     // need gripper pos for initialization; wait 10 seconds
-    double time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0;
+    time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0;
     if (!is_gripper_info && time_from_start > 10.0) {
         is_grasped = {false, false};
+        cdcpd.kvis = 1e3;
     }
     bool is_interaction = false;
 
@@ -797,6 +865,16 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         one_config(0, 3) = gripper_pt[0];
         one_config(1, 3) = gripper_pt[1];
         one_config(2, 3) = gripper_pt[2];
+        // if (g == 1) {
+        //     one_config(0, 3) = gripper_pt[0];
+        //     one_config(1, 3) = gripper_pt[1];
+        //     one_config(2, 3) = gripper_pt[2];
+        // }
+        // else {
+        //     one_config(0, 3) = Y_init(Y_init.rows()-1, 0);
+        //     one_config(1, 3) = Y_init(Y_init.rows()-1, 1);
+        //     one_config(2, 3) = Y_init(Y_init.rows()-1, 2);
+        // }
 
         // log time
         double gripper_time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - gripper_time).count();
@@ -860,7 +938,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     else {
         // out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, false, false, false, 0, fixed_points);
         // std::cout << "pred 0" << std::endl;
-        out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, {});
+        out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
     }
 
     
@@ -945,6 +1023,7 @@ int main(int argc, char **argv) {
     nh.getParam("/cdcpd2/right_x", right_x);
     nh.getParam("/cdcpd2/right_y", right_y);
     nh.getParam("/cdcpd2/right_z", right_z);
+    nh.getParam("/cdcpd2/bag_file", bag_file);
 
     nh_ptr = std::make_shared<ros::NodeHandle>(nh);
 
@@ -958,8 +1037,6 @@ int main(int argc, char **argv) {
     downsampled_publisher = nh.advertise<PointCloud> ("cdcpd/downsampled", 1);
     pred_publisher = nh.advertise<PointCloud>("cdcpd/prediction", 1);
     output_publisher = nh.advertise<PointCloud> ("cdcpd2_results_pc", 1);
-
-    start_time = std::chrono::steady_clock::now();
 
     tf2_ros::TransformListener tfListener(tfBuffer);
 

@@ -17,24 +17,38 @@
     <arg name="right_z" value="0.6" if="$(eval arg('bag_file') == 1)"/>
 
     <arg name="left_x" value="0.0" if="$(eval arg('bag_file') == 2)"/>
-    <arg name="left_y" value="-0.05" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="left_y" value="0.1" if="$(eval arg('bag_file') == 2)"/>
     <arg name="left_z" value="0.6" if="$(eval arg('bag_file') == 2)"/>
-    <arg name="right_x" value="0.0" if="$(eval arg('bag_file') == 2)"/>
-    <arg name="right_y" value="-0.78" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="right_x" value="-0.723" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="right_y" value="0.2" if="$(eval arg('bag_file') == 2)"/>
     <arg name="right_z" value="0.6" if="$(eval arg('bag_file') == 2)"/>
 
+    <arg name="num_of_nodes" default="40" />
+    <arg name="use_eval_rope" default="true" />
+
+    <!-- <arg name="is_gripper_info" default="false" /> -->
+    <arg name="is_gripper_info" value="false" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 2)"/>
+
+    <!-- <arg name="use_real_gripper" default="false" /> -->
+    <arg name="use_real_gripper" value="false" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="use_real_gripper" value="true" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="use_real_gripper" value="true" if="$(eval arg('bag_file') == 2)"/>
+
     <node name="cdcpd2" pkg="cdcpd_ros" type="cdcpd2" output="screen">
-        <param name="num_of_nodes" value="41" />
-        <param name="use_eval_rope" value="true" />
-        <param name="is_gripper_info" value="false" />
-        <param name="use_real_gripper" value="false" />
+        <param name="bag_file" value="$(arg bag_file)" />
+        <param name="num_of_nodes" value="$(arg num_of_nodes)" />
+        <param name="use_eval_rope" value="$(arg use_eval_rope)" />
+        <param name="is_gripper_info" value="$(arg is_gripper_info)" />
+        <param name="use_real_gripper" value="$(arg use_real_gripper)" />
 
         <!-- the params below are from the original cdcpd2 scripts -->
         <param name="alpha" value="0.5" />
         <param name="beta" value="1.0" />
         <param name="lambda" value="1.0" />
         <param name="zeta" value="10.0" />
-        <param name="leaf_size" value="0.005" />
+        <param name="leaf_size" value="0.02" />
 
         <param name="k_spring" value="100.0" />
         <param name="is_sim" value="false" />
