@@ -92,6 +92,7 @@ bool use_real_gripper;
 
 // 0 -> statinary.bag; 1 -> with_gripper_perpendicular.bag
 int bag_file;
+double bag_rate;
 
 double alpha;
 double beta;
@@ -662,8 +663,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
     sor.setInputCloud (cloudPtr);
 
-    double time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0;
-    if (time_from_start > 5.0) {
+    double time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0 * bag_rate;
+    double cutoff_time = 5.0;
+    if (bag_file == 0) {
+        cutoff_time = 8.0;
+    }
+    if (time_from_start > cutoff_time) {
         sor.setLeafSize (leaf_size, leaf_size, leaf_size);
     }
     else {
@@ -1024,6 +1029,7 @@ int main(int argc, char **argv) {
     nh.getParam("/cdcpd2/right_y", right_y);
     nh.getParam("/cdcpd2/right_z", right_z);
     nh.getParam("/cdcpd2/bag_file", bag_file);
+    nh.getParam("/cdcpd2/bag_rate", bag_rate);
 
     nh_ptr = std::make_shared<ros::NodeHandle>(nh);
 

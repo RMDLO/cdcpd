@@ -1,6 +1,7 @@
 <launch>
     <!-- 0 -> statinary.bag; 1 -> with_gripper_perpendicular.bag -->
     <arg name="bag_file" default="0" />
+    <arg name="bag_rate" default="0.5" />
 
     <arg name="left_x" value="0.1" if="$(eval arg('bag_file') == 0)"/>
     <arg name="left_y" value="0.0" if="$(eval arg('bag_file') == 0)"/>
@@ -38,6 +39,8 @@
 
     <node name="cdcpd2" pkg="cdcpd_ros" type="cdcpd2" output="screen">
         <param name="bag_file" value="$(arg bag_file)" />
+        <param name="bag_rate" value="$(arg bag_rate)" />
+
         <param name="num_of_nodes" value="$(arg num_of_nodes)" />
         <param name="use_eval_rope" value="$(arg use_eval_rope)" />
         <param name="is_gripper_info" value="$(arg is_gripper_info)" />
