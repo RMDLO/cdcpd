@@ -499,6 +499,7 @@ std::chrono::steady_clock::time_point start_time;
 
 // ---------- CALLBACK ----------
 bool initialized = false;
+bool reversed_Y = false;
 MatrixXf Y_init;
 
 std::chrono::steady_clock::time_point gripper_time = std::chrono::steady_clock::now();
@@ -645,8 +646,10 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     }
 
     geometry_msgs::TransformStamped transformStamped;
-    if (use_real_gripper) {
+    if (bag_file != 0) {
         transformStamped = tfBuffer.lookupTransform("camera_color_optical_frame", "tool0_m", ros::Time(0));
+    }
+    if (use_real_gripper) {
         std::cout << "translation: " << transformStamped.transform.translation.x << "; " << transformStamped.transform.translation.y << "; " << transformStamped.transform.translation.z << std::endl;
     }
 
@@ -773,6 +776,26 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     else {
         gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
     }
+
+    // hard coded
+    if (bag_file == 1 && time_from_start < 4) {
+        gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
+    }
+    if (bag_file == 2 && time_from_start < 5) {
+        gripper_pt = {transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z};
+    }
+    else if (bag_file == 1 && time_from_start >= 4 && is_gripper_info && !reversed_Y) {
+        std::vector<pcl::PointXYZ> temp_vec = {};
+        for (int i = 0; i < num_of_nodes; i ++) {
+            // pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+            temp_vec.push_back((*template_cloud)[i]);
+        }
+        for (int i = 0; i < num_of_nodes; i ++) {
+            (*template_cloud)[i] = temp_vec[num_of_nodes-1-i];
+        }
+        reversed_Y = true;
+        ROS_ERROR_STREAM("reversed Y");
+    }
     
     Eigen::Vector3f left_pos((float)gripper_pt[0], (float)gripper_pt[1], (float)gripper_pt[2]);
     CDCPD::FixedPoint left_gripper = {left_pos, 0};
@@ -796,7 +819,16 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
     // need gripper pos for initialization; wait 10 seconds
     time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0;
-    if (!is_gripper_info && time_from_start > 10.0) {
+    if (bag_file == 0) {
+        cutoff_time = 8.0;
+    }
+    else if (bag_file == 1) {
+        cutoff_time = 4.0;
+    }
+    else {
+        cutoff_time = 5.0;
+    }
+    if (!is_gripper_info && time_from_start > cutoff_time) {
         is_grasped = {false, false};
         cdcpd.kvis = 1e3;
     }

@@ -10,10 +10,10 @@
     <arg name="right_y" value="0.0" if="$(eval arg('bag_file') == 0)"/>
     <arg name="right_z" value="0.6" if="$(eval arg('bag_file') == 0)"/>
 
-    <arg name="left_x" value="-0.1" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="left_x" value="-0.12" if="$(eval arg('bag_file') == 1)"/>
     <arg name="left_y" value="0.0" if="$(eval arg('bag_file') == 1)"/>
     <arg name="left_z" value="0.6" if="$(eval arg('bag_file') == 1)"/>
-    <arg name="right_x" value="-0.83" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="right_x" value="-0.85" if="$(eval arg('bag_file') == 1)"/>
     <arg name="right_y" value="0.0" if="$(eval arg('bag_file') == 1)"/>
     <arg name="right_z" value="0.6" if="$(eval arg('bag_file') == 1)"/>
 
