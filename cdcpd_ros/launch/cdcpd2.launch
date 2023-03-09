@@ -24,6 +24,13 @@
     <arg name="right_y" value="0.2" if="$(eval arg('bag_file') == 2)"/>
     <arg name="right_z" value="0.6" if="$(eval arg('bag_file') == 2)"/>
 
+    <arg name="left_x" value="-0.15" if="$(eval arg('bag_file') == 3)"/>
+    <arg name="left_y" value="-0.1" if="$(eval arg('bag_file') == 3)"/>
+    <arg name="left_z" value="0.6" if="$(eval arg('bag_file') == 3)"/>
+    <arg name="right_x" value="0.58" if="$(eval arg('bag_file') == 3)"/>
+    <arg name="right_y" value="-0.1" if="$(eval arg('bag_file') == 3)"/>
+    <arg name="right_z" value="0.6" if="$(eval arg('bag_file') == 3)"/>
+
     <arg name="num_of_nodes" default="40" />
     <arg name="use_eval_rope" default="true" />
 
@@ -31,11 +38,13 @@
     <arg name="is_gripper_info" value="false" if="$(eval arg('bag_file') == 0)"/>
     <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 1)"/>
     <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 3)"/>
 
     <!-- <arg name="use_real_gripper" default="false" /> -->
     <arg name="use_real_gripper" value="false" if="$(eval arg('bag_file') == 0)"/>
     <arg name="use_real_gripper" value="true" if="$(eval arg('bag_file') == 1)"/>
     <arg name="use_real_gripper" value="true" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="use_real_gripper" value="true" if="$(eval arg('bag_file') == 3)"/>
 
     <node name="cdcpd2" pkg="cdcpd_ros" type="cdcpd2" output="screen">
         <param name="bag_file" value="$(arg bag_file)" />
