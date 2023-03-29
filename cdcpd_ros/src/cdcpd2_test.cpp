@@ -611,7 +611,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     pcl::PointCloud<pcl::PointXYZRGB> cur_yellow_xyz;
 
     // temp depth from pc
-    Mat depth_image = Mat::zeros(1280, 720, CV_64F);
+    Mat depth_image = Mat::zeros(cloud->height, cloud->width, CV_64F);
 
     // filter point cloud from mask
     for (int i = 0; i < cloud->height; i ++) {
@@ -818,7 +818,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     // std::vector<bool> is_grasped = {true, true};
 
     // need gripper pos for initialization; wait 10 seconds
-    time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0;
+    // time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0;
     if (bag_file == 0) {
         cutoff_time = 8.0;
     }
@@ -1074,7 +1074,13 @@ int main(int argc, char **argv) {
     masked_publisher = nh.advertise<PointCloud> ("cdcpd/masked", 1);
     downsampled_publisher = nh.advertise<PointCloud> ("cdcpd/downsampled", 1);
     pred_publisher = nh.advertise<PointCloud>("cdcpd/prediction", 1);
-    output_publisher = nh.advertise<PointCloud> ("cdcpd2_results_pc", 1);
+    output_publisher;
+    if (is_gripper_info) {
+        output_publisher = nh.advertise<PointCloud> ("cdcpd2_results_pc", 1);
+    }
+    else {
+        output_publisher = nh.advertise<PointCloud> ("cdcpd2_no_gripper_results_pc", 1);
+    }
 
     tf2_ros::TransformListener tfListener(tfBuffer);
 

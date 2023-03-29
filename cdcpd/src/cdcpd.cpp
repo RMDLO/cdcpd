@@ -517,6 +517,9 @@ VectorXf CDCPD::visibility_prior(const Matrix3Xf& vertices,
     // ENHANCE: replace P_eigen.leftCols(3) with intrinsics
     Matrix3Xf image_space_vertices = intrinsics * vertices;
 
+    double time_diff;
+    std::chrono::steady_clock::time_point cur_time;
+
     // Homogeneous coords: divide by third row
     // the for-loop is unnecessary
     image_space_vertices.row(0).array() /= image_space_vertices.row(2).array();
@@ -558,9 +561,20 @@ VectorXf CDCPD::visibility_prior(const Matrix3Xf& vertices,
     depth_diffs = depth_diffs.array().max(0);
 
     Eigen::VectorXf depth_factor = depth_diffs.array().max(0.0);
-    cv::Mat dist_img(depth.rows, depth.cols, CV_32F); // TODO haven't really tested this but seems right
+
     int maskSize = 5;
-    cv::distanceTransform(~mask, dist_img, cv::noArray(), cv::DIST_L2, maskSize);
+
+    // log time
+    cur_time = std::chrono::steady_clock::now();
+
+    cv::Mat dist_img(depth.rows, depth.cols, CV_32F); // TODO haven't really tested this but seems right
+    std::cout << "dest size: " << depth.rows << "; " << depth.cols << std::endl;
+    // cv::distanceTransform(~mask, dist_img, cv::noArray(), cv::DIST_L2, maskSize);
+    cv::distanceTransform((255-mask), dist_img, cv::noArray(), cv::DIST_L2, 5);
+
+    time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    ROS_INFO_STREAM("Distance transform only: " + std::to_string(time_diff) + " ms");
+
     // ???: why cv::normalize is needed
     cv::normalize(dist_img, dist_img, 0.0, 1.0, cv::NORM_MINMAX);
 

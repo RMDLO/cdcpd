@@ -35,7 +35,7 @@
     <arg name="use_eval_rope" default="true" />
 
     <!-- <arg name="is_gripper_info" default="false" /> -->
-    <arg name="is_gripper_info" value="false" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 0)"/>
     <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 1)"/>
     <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 2)"/>
     <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 3)"/>
