@@ -507,6 +507,10 @@ std::chrono::steady_clock::time_point start_time;
 bool initialized = false;
 MatrixXf Y_init;
 
+double pre_proc_total = 0;
+double algo_total = 0;
+double pub_data_total = 0;
+
 std::chrono::steady_clock::time_point gripper_time = std::chrono::steady_clock::now();
 
 // sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
@@ -945,6 +949,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     // // log time
     // std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 
+    // log time
+    double pre_proc_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start_time_cb).count() / 1000.0;
+    ROS_INFO_STREAM("[NEW] Pre-processing: " + std::to_string(pre_proc_time) + " ms");
+    pre_proc_total += pre_proc_time;
+    std::chrono::high_resolution_clock::time_point before_reg = std::chrono::high_resolution_clock::now();
+
     if (is_gripper_info) {
         // pred_choice:
         // 	- 0: no movement
@@ -965,6 +975,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         // std::cout << "pred 0" << std::endl;
         out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
     }
+
+    // log time
+    double algo_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - before_reg).count() / 1000.0;
+    ROS_INFO_STREAM("[NEW] Algo runtime: " + std::to_string(algo_time) + " ms");
+    algo_total += algo_time;
+    std::chrono::high_resolution_clock::time_point before_pub = std::chrono::high_resolution_clock::now();
 
     cdcpd.time_diff = std::chrono::duration_cast<std::chrono::microseconds>(cdcpd.end_time - start_time_cb).count();
     total_time_sum += cdcpd.time_diff;
@@ -1023,6 +1039,11 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     pred_publisher.publish(out.cpd_predict);
     output_publisher.publish(result_pc);
 
+    // log time
+    double pub_data_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - before_pub).count() / 1000.0;
+    ROS_INFO_STREAM("[NEW] Pub data time: " + std::to_string(pub_data_time) + " ms");
+    pub_data_total += pub_data_time;
+
     frame_num += 1;
     ROS_INFO_STREAM("1111Total data segment time: " + std::to_string(total_data_segment_time_sum/frame_num) + " microseconds");
     ROS_INFO_STREAM("1111Total downsampling time: " + std::to_string(total_downsampling_time_sum/frame_num) + " microseconds");
@@ -1030,6 +1051,11 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     ROS_INFO_STREAM("1111Total tracking time: " + std::to_string(cdcpd.total_tracking_time_sum/frame_num) + " microseconds");
     ROS_INFO_STREAM("1111Total Postprocessing time: " + std::to_string(cdcpd.total_post_processing_sum/frame_num) + " microseconds");
     ROS_INFO_STREAM("1111Total total time: " + std::to_string(total_time_sum/frame_num) + " microseconds");
+
+    ROS_INFO_STREAM("[NEW] Overall pre-processing: " + std::to_string(pre_proc_total / frame_num) + " ms");
+    ROS_INFO_STREAM("[NEW] Overall algo runtime: " + std::to_string(algo_total / frame_num) + " ms");
+    ROS_INFO_STREAM("[NEW] Overall pub data time: " + std::to_string(pub_data_total / frame_num) + " ms");
+    ROS_INFO_STREAM("[NEW] Overall total time: " + std::to_string((pre_proc_total + algo_total + pub_data_total) / frame_num) + " ms");
 
     return mask_msg;
 }
