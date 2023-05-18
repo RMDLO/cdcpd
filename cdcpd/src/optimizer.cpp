@@ -589,6 +589,7 @@ Matrix3Xf Optimizer::operator()(const Matrix3Xf& Y, const Matrix2Xi& E, const st
         }
 
         // Add the edge constraints
+        // comment: this is the stretching limit constraint?
         {
             for (ssize_t i = 0; i < E.cols(); ++i)
             {
@@ -602,49 +603,48 @@ Matrix3Xf Optimizer::operator()(const Matrix3Xf& Y, const Matrix2Xi& E, const st
         }
 
         // Add interaction constraints
+        // if (interaction_constrain && cylinder_radius > 0)
+        // {
+		// 	Matrix3Xf nearestPts, normalVecs;
+		// 	if (is_shape_comp) {
+        //     	std::tie(nearestPts, normalVecs) = nearest_points_and_normal(last_template);
+        //     } else {
+		// 		std::tie(nearestPts, normalVecs) = nearest_points_and_normal_cyl(last_template);
+		// 	}
+		// 	cout << "added interaction constrain" << endl;
+        //     // cout << "last template:" << endl;
+        //     // cout << last_template << endl << endl;
+        //     // cout << "nearestPts:" << endl;
+        //     // cout << nearestPts << endl << endl;
+        //     // cout << "normalVecs:" << endl;
+        //     // cout << normalVecs << endl << endl;
+        //     for (ssize_t i = 0; i < num_vectors; ++i)
+		// 	{
+		// 		// ssize_t fixed_idx = 0;
+		// 		// for (fixed_idx = 0; fixed_idx < fixed_points.size(); fixed_idx++)
+		// 		// {
+		// 		//  	if (i <= int(fixed_points[fixed_idx].template_index) + 5 && i >= int(fixed_points[fixed_idx].template_index) - 5) {
+		// 		//  		break;
+		// 		//  	}
+		// 		// }
+		// 		// if (fixed_idx == fixed_points.size())
+		// 		// {
+		// 			model.addConstr(
+        //                 (vars[i*3 + 0] - nearestPts(0, i))*normalVecs(0, i) +
+        //                 (vars[i*3 + 1] - nearestPts(1, i))*normalVecs(1, i) +
+        //                 (vars[i*3 + 2] - nearestPts(2, i))*normalVecs(2, i) >= 0.0, "interaction constrain for point " +std::to_string(i));
+		// 		// }
+        //     }
+		// 	// for (ssize_t i = 0; i < num_vectors; ++i) {
+        //     //     model.addConstr(
+        //     //             (vars[i*3 + 0] - nearestPts(0, i))*normalVecs(0, i) +
+        //     //             (vars[i*3 + 1] - nearestPts(1, i))*normalVecs(1, i) +
+        //     //             (vars[i*3 + 2] - nearestPts(2, i))*normalVecs(2, i) <= 1.0, "interaction constrain for point " +std::to_string(i));
+        //     // }
+        // }
 
-
-        if (interaction_constrain && cylinder_radius > 0)
-        {
-			Matrix3Xf nearestPts, normalVecs;
-			if (is_shape_comp) {
-            	std::tie(nearestPts, normalVecs) = nearest_points_and_normal(last_template);
-            } else {
-				std::tie(nearestPts, normalVecs) = nearest_points_and_normal_cyl(last_template);
-			}
-			cout << "added interaction constrain" << endl;
-            // cout << "last template:" << endl;
-            // cout << last_template << endl << endl;
-            // cout << "nearestPts:" << endl;
-            // cout << nearestPts << endl << endl;
-            // cout << "normalVecs:" << endl;
-            // cout << normalVecs << endl << endl;
-            for (ssize_t i = 0; i < num_vectors; ++i)
-			{
-				// ssize_t fixed_idx = 0;
-				// for (fixed_idx = 0; fixed_idx < fixed_points.size(); fixed_idx++)
-				// {
-				//  	if (i <= int(fixed_points[fixed_idx].template_index) + 5 && i >= int(fixed_points[fixed_idx].template_index) - 5) {
-				//  		break;
-				//  	}
-				// }
-				// if (fixed_idx == fixed_points.size())
-				// {
-					model.addConstr(
-                        (vars[i*3 + 0] - nearestPts(0, i))*normalVecs(0, i) +
-                        (vars[i*3 + 1] - nearestPts(1, i))*normalVecs(1, i) +
-                        (vars[i*3 + 2] - nearestPts(2, i))*normalVecs(2, i) >= 0.0, "interaction constrain for point " +std::to_string(i));
-				// }
-            }
-			// for (ssize_t i = 0; i < num_vectors; ++i) {
-            //     model.addConstr(
-            //             (vars[i*3 + 0] - nearestPts(0, i))*normalVecs(0, i) +
-            //             (vars[i*3 + 1] - nearestPts(1, i))*normalVecs(1, i) +
-            //             (vars[i*3 + 2] - nearestPts(2, i))*normalVecs(2, i) <= 1.0, "interaction constrain for point " +std::to_string(i));
-            // }
-        }
-
-        if (self_intersection)
+        // if (self_intersection)
+        if (true)
         {
             cout << "adding self intersection constrain" << endl;
             auto [startPts, endPts] = nearest_points_line_segments(last_template, E);
@@ -683,28 +683,28 @@ Matrix3Xf Optimizer::operator()(const Matrix3Xf& Y, const Matrix2Xi& E, const st
         // Next, add the fixed point constraints that we might have.
         // TODO make this more
         // First, make sure that the constraints can be satisfied
-        GRBQuadExpr gripper_objective_fn(0);
-		if (all_constraints_satisfiable(fixed_points))
-        {
-            // If that's possible, we'll require that all constraints are equal
-            for (const auto& fixed_point : fixed_points)
-            {
-                model.addConstr(vars[3 * fixed_point.template_index + 0], GRB_EQUAL, fixed_point.position(0), "fixed_point");
-                model.addConstr(vars[3 * fixed_point.template_index + 1], GRB_EQUAL, fixed_point.position(1), "fixed_point");
-                model.addConstr(vars[3 * fixed_point.template_index + 2], GRB_EQUAL, fixed_point.position(2), "fixed_point");
-            }
-        }
-        else
-        {
-            cout << "Gripper constraint cannot be satisfied." << endl;
-            for (const auto& fixed_point : fixed_points)
-            {
-                const auto expr0 = vars[fixed_point.template_index + 0] - Y_copy(0, fixed_point.template_index);
-                const auto expr1 = vars[fixed_point.template_index + 1] - Y_copy(1, fixed_point.template_index);
-                const auto expr2 = vars[fixed_point.template_index + 2] - Y_copy(2, fixed_point.template_index);
-                gripper_objective_fn += 100.0 * (expr0 * expr0 + expr1 * expr1 + expr2 * expr2);
-            }
-        }
+        // GRBQuadExpr gripper_objective_fn(0);
+		// if (all_constraints_satisfiable(fixed_points))
+        // {
+        //     // If that's possible, we'll require that all constraints are equal
+        //     for (const auto& fixed_point : fixed_points)
+        //     {
+        //         model.addConstr(vars[3 * fixed_point.template_index + 0], GRB_EQUAL, fixed_point.position(0), "fixed_point");
+        //         model.addConstr(vars[3 * fixed_point.template_index + 1], GRB_EQUAL, fixed_point.position(1), "fixed_point");
+        //         model.addConstr(vars[3 * fixed_point.template_index + 2], GRB_EQUAL, fixed_point.position(2), "fixed_point");
+        //     }
+        // }
+        // else
+        // {
+        //     cout << "Gripper constraint cannot be satisfied." << endl;
+        //     for (const auto& fixed_point : fixed_points)
+        //     {
+        //         const auto expr0 = vars[fixed_point.template_index + 0] - Y_copy(0, fixed_point.template_index);
+        //         const auto expr1 = vars[fixed_point.template_index + 1] - Y_copy(1, fixed_point.template_index);
+        //         const auto expr2 = vars[fixed_point.template_index + 2] - Y_copy(2, fixed_point.template_index);
+        //         gripper_objective_fn += 100.0 * (expr0 * expr0 + expr1 * expr1 + expr2 * expr2);
+        //     }
+        // }
 
         // Build the objective function
         {

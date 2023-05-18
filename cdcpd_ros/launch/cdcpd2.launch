@@ -35,9 +35,9 @@
     <arg name="use_eval_rope" default="true" />
 
     <!-- <arg name="is_gripper_info" default="false" /> -->
-    <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 0)"/>
-    <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 1)"/>
-    <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 2)"/>
+    <arg name="is_gripper_info" value="false" if="$(eval arg('bag_file') == 0)"/>
+    <arg name="is_gripper_info" value="false" if="$(eval arg('bag_file') == 1)"/>
+    <arg name="is_gripper_info" value="false" if="$(eval arg('bag_file') == 2)"/>
     <arg name="is_gripper_info" value="true" if="$(eval arg('bag_file') == 3)"/>
 
     <!-- <arg name="use_real_gripper" default="false" /> -->
@@ -60,7 +60,7 @@
         <param name="beta" value="1.0" />
         <param name="lambda" value="1.0" />
         <param name="zeta" value="10.0" />
-        <param name="leaf_size" value="0.02" />
+        <param name="leaf_size" value="0.005" />
 
         <param name="k_spring" value="100.0" />
         <param name="is_sim" value="false" />

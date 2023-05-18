@@ -190,21 +190,50 @@ static double initial_sigma2(const MatrixXf& X, const MatrixXf& Y)
     return total_error / (X.cols() * Y.cols() * X.rows());
 }
 
+double pt2pt_dis_sq (MatrixXf pt1, MatrixXf pt2) {
+    return (pt1 - pt2).rowwise().squaredNorm().sum();
+}
+
+double pt2pt_dis (MatrixXf pt1, MatrixXf pt2) {
+    return (pt1 - pt2).rowwise().norm().sum();
+}
+
 static MatrixXf gaussian_kernel(const MatrixXf& Y, double beta)
 {
     // Y: (3, M) matrix, corresponding to Y^(t-1) in Eq. 13.5 (Y^t in VI.A)
     // beta: beta in Eq. 13.5 (between 13 and 14)
-    MatrixXf diff(Y.cols(), Y.cols());
-    diff.setZero();
-    for (int i = 0; i < Y.cols(); ++i)
-    {
-        for (int j = 0; j < Y.cols(); ++j)
-        {
-            diff(i, j) = (Y.col(i) - Y.col(j)).squaredNorm();
+    // MatrixXf diff(Y.cols(), Y.cols());
+    // diff.setZero();
+    // for (int i = 0; i < Y.cols(); ++i)
+    // {
+    //     for (int j = 0; j < Y.cols(); ++j)
+    //     {
+    //         diff(i, j) = (Y.col(i) - Y.col(j)).squaredNorm();
+    //     }
+    // }
+
+    std::cout << "Y shape: " << Y.rows() << ", " << Y.cols() << std::endl;
+
+    int M = Y.cols();
+    MatrixXf converted_node_dis = MatrixXf::Zero(M, M); // this is a M*M matrix in place of diff_sqrt
+    MatrixXf converted_node_dis_sq = MatrixXf::Zero(M, M);
+    std::vector<double> converted_node_coord = {0.0};
+    
+    double cur_sum = 0;
+    for (int i = 0; i < M-1; i ++) {
+        cur_sum += pt2pt_dis(Y.transpose().row(i+1), Y.transpose().row(i));
+        converted_node_coord.push_back(cur_sum);
+    }
+
+    for (int i = 0; i < converted_node_coord.size(); i ++) {
+        for (int j = 0; j < converted_node_coord.size(); j ++) {
+            converted_node_dis_sq(i, j) = pow(converted_node_coord[i] - converted_node_coord[j], 2);
+            converted_node_dis(i, j) = abs(converted_node_coord[i] - converted_node_coord[j]);
         }
     }
+
     // ???: beta should be beta^2
-    MatrixXf kernel = (-diff / (2 * beta * beta)).array().exp();
+    MatrixXf kernel = (-converted_node_dis_sq / (2 * beta * beta)).array().exp();
     return kernel;
 }
 

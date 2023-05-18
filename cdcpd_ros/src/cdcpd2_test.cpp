@@ -639,7 +639,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
             if (mask.at<uchar>(i, j) != 0) {
                 cur_pc_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
             }
-            if (mask_yellow.at<uchar>(i, j) != 0) {
+            if (use_eval_rope && mask_yellow.at<uchar>(i, j) != 0) {
                 cur_yellow_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
             }
         }
@@ -655,7 +655,10 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
     MatrixXf cur_yellow_pts = cur_yellow_xyz.getMatrixXfMap().topRows(3).transpose();
     std::cout << cur_yellow_pts.rows() << std::endl;
-    MatrixXf head_node = reg(cur_yellow_pts, 1, 0.1, 100);
+    MatrixXf head_node = MatrixXf::Zero(1, 3);
+    if (use_eval_rope) {
+        head_node = reg(cur_yellow_pts, 1, 0.1, 100);
+    }
     // std::cout << "head node: " << head_node << std::endl;
 
     // convert back to pointcloud2 message
@@ -696,13 +699,15 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         Y_gmm = sort_pts(Y_gmm);
 
         Y_init = Y_gmm.replicate(1, 1);
-        if (sqrt(pow(Y_gmm(0, 0)-head_node(0, 0), 2) + pow(Y_gmm(0, 1)-head_node(0, 1), 2) + pow(Y_gmm(0, 2)-head_node(0, 2), 2)) > 0.05) {
-            for (int i = 0; i < Y_gmm.rows(); i ++) {
-                Y_init.row(Y_gmm.rows()-1-i) = Y_gmm.row(i).replicate(1, 1);
+        if (use_eval_rope) {
+            if (sqrt(pow(Y_gmm(0, 0)-head_node(0, 0), 2) + pow(Y_gmm(0, 1)-head_node(0, 1), 2) + pow(Y_gmm(0, 2)-head_node(0, 2), 2)) > 0.05) {
+                for (int i = 0; i < Y_gmm.rows(); i ++) {
+                    Y_init.row(Y_gmm.rows()-1-i) = Y_gmm.row(i).replicate(1, 1);
+                }
             }
-        }
-        else {
-            Y_init = Y_gmm.replicate(1, 1);
+            else {
+                Y_init = Y_gmm.replicate(1, 1);
+            }
         }
 
         // std::cout << "found Y" << std::endl;
@@ -716,8 +721,8 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
             last_gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
         }
 
-        // auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
-        auto [template_vertices_, template_edges_] = init_template();
+        auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
+        // auto [template_vertices_, template_edges_] = init_template();
         // auto [template_vertices_, template_edges_] = init_template_hardcoded();
         template_vertices = template_vertices_.replicate(1, 1);
         template_edges = template_edges_.replicate(1, 1);
