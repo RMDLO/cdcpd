@@ -183,6 +183,7 @@ public:
                       const std::vector<FixedPoint>& fixed_points = {});
 
     float kvis;
+    double last_sigma2 = 0;
 
 private:
     Eigen::VectorXf visibility_prior(const Eigen::Matrix3Xf& vertices,
@@ -260,7 +261,6 @@ private:
 	float zeta;
     bool use_recovery;
     // std::vector<Eigen::MatrixXf> Q;
-    double last_sigma2;
     Eigen::MatrixXi gripper_idx;
 	std::shared_ptr<const sdf_tools::SignedDistanceField> sdf_ptr;
     std::vector<bool> last_grasp_status;

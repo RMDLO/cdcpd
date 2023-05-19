@@ -341,9 +341,9 @@ visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf gripped_pt, Matri
         cur_node_result.pose.orientation.z = 0.0;
 
         // set scale
-        cur_node_result.scale.x = 0.01;
-        cur_node_result.scale.y = 0.01;
-        cur_node_result.scale.z = 0.01;
+        cur_node_result.scale.x = 0.007;
+        cur_node_result.scale.y = 0.007;
+        cur_node_result.scale.z = 0.007;
 
         // set color
         cur_node_result.color.r = node_color[0];
@@ -354,8 +354,11 @@ visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf gripped_pt, Matri
         results.markers.push_back(cur_node_result);
 
         // don't add line if at the last node
-        if (i == Y.rows()-1) {
-            break;
+        // if (i == Y.rows()-1) {
+        //     break;
+        // }
+        if (i == 19 || i == 39 || i == 59) {
+            continue;
         }
 
         visualization_msgs::Marker cur_line_result = visualization_msgs::Marker();
@@ -630,7 +633,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
                     continue;
                 }
             }
-            else {
+            else if (bag_file != 0) {
                 if (cloud_xyz(j, i).z < 0.58) {
                     continue;
                 }
@@ -671,21 +674,23 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
     double time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0 * bag_rate;
     double cutoff_time = 5.0;
-    if (bag_file == 0) {
-        cutoff_time = 8.0;
-    }
-    if (time_from_start > cutoff_time) {
-        sor.setLeafSize (leaf_size, leaf_size, leaf_size);
-    }
-    else {
+    sor.setLeafSize (leaf_size, leaf_size, leaf_size);
+    if (use_eval_rope) {
         if (bag_file == 0) {
-            sor.setLeafSize (0.002, 0.002, 0.002);
+            cutoff_time = 8.0;
+        }
+        if (time_from_start > cutoff_time) {
+            sor.setLeafSize (leaf_size, leaf_size, leaf_size);
         }
         else {
-            sor.setLeafSize (0.0035, 0.0035, 0.0035);
+            if (bag_file == 0) {
+                sor.setLeafSize (0.002, 0.002, 0.002);
+            }
+            else {
+                sor.setLeafSize (0.0035, 0.0035, 0.0035);
+            }
         }
     }
-    
     sor.filter (cur_pc_downsampled);
 
     pcl::fromPCLPointCloud2(cur_pc_downsampled, downsampled_xyz);
@@ -698,15 +703,74 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
         MatrixXf Y_gmm = reg(X, num_of_nodes, 0.05, 100);
         Y_gmm = sort_pts(Y_gmm);
 
-        Y_init = Y_gmm.replicate(1, 1);
         if (use_eval_rope) {
-            if (sqrt(pow(Y_gmm(0, 0)-head_node(0, 0), 2) + pow(Y_gmm(0, 1)-head_node(0, 1), 2) + pow(Y_gmm(0, 2)-head_node(0, 2), 2)) > 0.05) {
-                for (int i = 0; i < Y_gmm.rows(); i ++) {
-                    Y_init.row(Y_gmm.rows()-1-i) = Y_gmm.row(i).replicate(1, 1);
+            Y_init = Y_gmm.replicate(1, 1);
+            if (use_eval_rope) {
+                if (sqrt(pow(Y_gmm(0, 0)-head_node(0, 0), 2) + pow(Y_gmm(0, 1)-head_node(0, 1), 2) + pow(Y_gmm(0, 2)-head_node(0, 2), 2)) > 0.05) {
+                    for (int i = 0; i < Y_gmm.rows(); i ++) {
+                        Y_init.row(Y_gmm.rows()-1-i) = Y_gmm.row(i).replicate(1, 1);
+                    }
+                }
+                else {
+                    Y_init = Y_gmm.replicate(1, 1);
                 }
             }
-            else {
-                Y_init = Y_gmm.replicate(1, 1);
+        }
+        else {
+            // wire1_pc = filtered_pc[filtered_pc[:, 0] > 0.05]
+            // wire2_pc = filtered_pc[(0.05 > filtered_pc[:, 0]) & (filtered_pc[:, 0] > 0.01)]
+            // wire3_pc = filtered_pc[filtered_pc[:, 0] < 0.01]
+            std::vector<MatrixXf> dlo_1_vec = {};
+            std::vector<MatrixXf> dlo_2_vec = {};
+            std::vector<MatrixXf> dlo_3_vec = {};
+
+            // separate the point cloud
+            for (int i = 0; i < X.rows(); i ++) {
+                if (X(i, 0) > 0.05) {
+                    dlo_1_vec.push_back(X.row(i));
+                }
+                else if (X(i, 0) < 0.05 && X(i, 0) > 0.01) {
+                    dlo_2_vec.push_back(X.row(i));
+                }
+                else if (X(i, 0) < 0.01) {
+                    dlo_3_vec.push_back(X.row(i));
+                }
+            }
+
+            // convert into MatrixXf
+            MatrixXf dlo_1_pc = MatrixXf::Zero(dlo_1_vec.size(), 3);
+            MatrixXf dlo_2_pc = MatrixXf::Zero(dlo_2_vec.size(), 3);
+            MatrixXf dlo_3_pc = MatrixXf::Zero(dlo_3_vec.size(), 3);
+            for (int i = 0; i < dlo_1_vec.size(); i ++) {
+                dlo_1_pc.row(i) = dlo_1_vec[i];
+            }
+            for (int i = 0; i < dlo_2_vec.size(); i ++) {
+                dlo_2_pc.row(i) = dlo_2_vec[i];
+            }
+            for (int i = 0; i < dlo_3_vec.size(); i ++) {
+                dlo_3_pc.row(i) = dlo_3_vec[i];
+            }
+
+            int nodes_per_dlo = static_cast<int>(num_of_nodes / 3.0);
+
+            MatrixXf Y_gmm_1 = reg(dlo_1_pc, nodes_per_dlo, 0.05, 100);
+            Y_gmm_1 = sort_pts(Y_gmm_1);
+            MatrixXf Y_gmm_2 = reg(dlo_2_pc, nodes_per_dlo, 0.05, 100);
+            Y_gmm_2 = sort_pts(Y_gmm_2);
+            MatrixXf Y_gmm_3 = reg(dlo_3_pc, nodes_per_dlo, 0.05, 100);
+            Y_gmm_3 = sort_pts(Y_gmm_3);
+
+            num_of_nodes = 3 * nodes_per_dlo;
+            Y_init = MatrixXf::Zero(3*nodes_per_dlo, 3);
+
+            for (int i = 0; i < nodes_per_dlo; i ++) {
+                Y_init.row(i) = Y_gmm_1.row(i);
+            }
+            for (int i = nodes_per_dlo; i < 2*nodes_per_dlo; i ++) {
+                Y_init.row(i) = Y_gmm_2.row(i - nodes_per_dlo);
+            }
+            for (int i = 2*nodes_per_dlo; i < 3*nodes_per_dlo; i ++) {
+                Y_init.row(i) = Y_gmm_3.row(i - 2*nodes_per_dlo);
             }
         }
 
@@ -721,7 +785,8 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
             last_gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
         }
 
-        auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
+        auto [template_vertices_, template_edges_] = init_template_gmm(Y_init);
+        // auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
         // auto [template_vertices_, template_edges_] = init_template();
         // auto [template_vertices_, template_edges_] = init_template_hardcoded();
         template_vertices = template_vertices_.replicate(1, 1);
@@ -1002,7 +1067,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
     // std::cout << "=====" << std::endl;
 
     // publish marker array
-    visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(head_node, Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
+    visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(head_node, Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 1}, {0.0, 1.0, 0.0, 1});
     results_pub.publish(results);
 
     double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time_cb).count();

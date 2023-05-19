@@ -40,7 +40,7 @@ using cv::Vec3b;
 using Eigen::ArrayXf;
 using Eigen::ArrayXd;
 using Eigen::MatrixXf;
-using Eigen::MatrixXd;
+using Eigen::MatrixXf;
 using Eigen::Matrix3Xf;
 using Eigen::Matrix3Xd;
 using Eigen::Matrix3f;
@@ -221,9 +221,25 @@ static MatrixXf gaussian_kernel(const MatrixXf& Y, double beta)
     
     double cur_sum = 0;
     for (int i = 0; i < M-1; i ++) {
+        if (i == 19 || i == 39) {
+            cur_sum += 10;
+        }
         cur_sum += pt2pt_dis(Y.transpose().row(i+1), Y.transpose().row(i));
         converted_node_coord.push_back(cur_sum);
+        // std::cout << "i: " << i << "; cur sum: " << cur_sum << std::endl;
     }
+
+    // double cur_sum = 0;
+    // for (int i = 0; i < 3; i ++) {
+    //     if (i != 0) {
+    //         cur_sum += 10.0;
+    //     }
+
+    //     for (int j = 0; j < M/3; j ++) {
+    //         cur_sum += pt2pt_dis(Y.transpose().row(i*M/3 + j +1), Y.transpose().row(i*M/3 + j));
+    //         converted_node_coord.push_back(cur_sum);
+    //     }
+    // }
 
     for (int i = 0; i < converted_node_coord.size(); i ++) {
         for (int j = 0; j < converted_node_coord.size(); j ++) {
@@ -234,7 +250,258 @@ static MatrixXf gaussian_kernel(const MatrixXf& Y, double beta)
 
     // ???: beta should be beta^2
     MatrixXf kernel = (-converted_node_dis_sq / (2 * beta * beta)).array().exp();
+    for (int i = 0; i < kernel.rows(); i ++) {
+        for (int j = 0; j < kernel.rows(); j ++) {
+            if (kernel(i, j) <= exp(-10*10 / (2 * beta * beta))) {
+                kernel(i, j) = 0;
+            }
+        }
+    }
     return kernel;
+}
+
+std::vector<int> get_nearest_indices (int k, int M, int idx) {
+    std::vector<int> indices_arr;
+    if (idx - k < 0) {
+        for (int i = 0; i <= idx + k; i ++) {
+            if (i != idx) {
+                indices_arr.push_back(i);
+            }
+        }
+    }
+    else if (idx + k >= M) {
+        for (int i = idx - k; i <= M - 1; i ++) {
+            if (i != idx) {
+                indices_arr.push_back(i);
+            }
+        }
+    }
+    else {
+        for (int i = idx - k; i <= idx + k; i ++) {
+            if (i != idx) {
+                indices_arr.push_back(i);
+            }
+        }
+    }
+
+    return indices_arr;
+}
+
+MatrixXf calc_LLE_weights (int k, MatrixXf X) {
+    MatrixXf W = MatrixXf::Zero(X.rows(), X.rows());
+    for (int i = 0; i < X.rows(); i ++) {
+        std::vector<int> indices = get_nearest_indices(static_cast<int>(k/2), X.rows(), i);
+        MatrixXf xi = X.row(i);
+        MatrixXf Xi = MatrixXf(indices.size(), X.cols());
+
+        // fill in Xi: Xi = X[indices, :]
+        for (int r = 0; r < indices.size(); r ++) {
+            Xi.row(r) = X.row(indices[r]);
+        }
+
+        // component = np.full((len(Xi), len(xi)), xi).T - Xi.T
+        MatrixXf component = xi.replicate(Xi.rows(), 1).transpose() - Xi.transpose();
+        MatrixXf Gi = component.transpose() * component;
+        MatrixXf Gi_inv;
+
+        if (Gi.determinant() != 0) {
+            Gi_inv = Gi.inverse();
+        }
+        else {
+            // std::cout << "Gi singular at entry " << i << std::endl;
+            double epsilon = 0.00001;
+            Gi.diagonal().array() += epsilon;
+            Gi_inv = Gi.inverse();
+        }
+
+        // wi = Gi_inv * 1 / (1^T * Gi_inv * 1)
+        MatrixXf ones_row_vec = MatrixXf::Constant(1, Xi.rows(), 1.0);
+        MatrixXf ones_col_vec = MatrixXf::Constant(Xi.rows(), 1, 1.0);
+
+        MatrixXf wi = (Gi_inv * ones_col_vec) / (ones_row_vec * Gi_inv * ones_col_vec).value();
+        MatrixXf wi_T = wi.transpose();
+
+        for (int c = 0; c < indices.size(); c ++) {
+            W(i, indices[c]) = wi_T(c);
+        }
+    }
+
+    return W;
+}
+
+void cpd_lle (MatrixXf X,
+              MatrixXf& Y,
+              double& sigma2,
+              double beta,
+              double lambda,
+              double gamma,
+              double mu,
+              int max_iter,
+              double tol,
+              bool include_lle,
+              bool use_geodesic,
+              bool use_prev_sigma2)
+{
+    int M = Y.rows();
+    int N = X.rows();
+    int D = 3;
+
+    // initialization
+    // compute differences for G matrix computation
+    MatrixXf diff_yy = MatrixXf::Zero(M, M);
+    MatrixXf diff_yy_sqrt = MatrixXf::Zero(M, M);
+    for (int i = 0; i < M; i ++) {
+        for (int j = 0; j < M; j ++) {
+            diff_yy(i, j) = (Y.row(i) - Y.row(j)).squaredNorm();
+            diff_yy_sqrt(i, j) = (Y.row(i) - Y.row(j)).norm();
+        }
+    }
+
+    MatrixXf Y_0 = Y.replicate(1, 1);
+    MatrixXf converted_node_dis = MatrixXf::Zero(M, M); // this is a M*M matrix in place of diff_sqrt
+    MatrixXf converted_node_dis_sq = MatrixXf::Zero(M, M);
+    std::vector<double> converted_node_coord = {0.0};   // this is not squared
+
+    double cur_sum = 0;
+    for (int i = 0; i < M-1; i ++) {
+        cur_sum += pt2pt_dis(Y_0.row(i+1), Y_0.row(i));
+        converted_node_coord.push_back(cur_sum);
+    }
+
+    for (int i = 0; i < converted_node_coord.size(); i ++) {
+        for (int j = 0; j < converted_node_coord.size(); j ++) {
+            converted_node_dis_sq(i, j) = pow(converted_node_coord[i] - converted_node_coord[j], 2);
+            converted_node_dis(i, j) = abs(converted_node_coord[i] - converted_node_coord[j]);
+        }
+    }
+
+    MatrixXf G = gaussian_kernel(Y_0.transpose(), beta);
+
+    // diff_xy should be a (M * N) matrix
+    MatrixXf diff_xy = MatrixXf::Zero(M, N);
+    for (int i = 0; i < M; i ++) {
+        for (int j = 0; j < N; j ++) {
+            diff_xy(i, j) = (Y_0.row(i) - X.row(j)).squaredNorm();
+        }
+    }
+
+    // initialize sigma2
+    if (!use_prev_sigma2 || sigma2 == 0) {
+        sigma2 = diff_xy.sum() / static_cast<double>(D * M * N);
+    }
+
+    for (int it = 0; it < max_iter; it ++) {
+        // update diff_xy
+        diff_xy = MatrixXf::Zero(M, N);
+        for (int i = 0; i < M; i ++) {
+            for (int j = 0; j < N; j ++) {
+                diff_xy(i, j) = (Y.row(i) - X.row(j)).squaredNorm();
+            }
+        }
+
+        MatrixXf P = (-0.5 * diff_xy / sigma2).array().exp();
+        MatrixXf P_stored = P.replicate(1, 1);
+        double c = pow((2 * M_PI * sigma2), static_cast<double>(D)/2) * mu / (1 - mu) * static_cast<double>(M)/N;
+        P = P.array().rowwise() / (P.colwise().sum().array() + c);
+
+        if (use_geodesic) {
+            std::vector<int> max_p_nodes(P.cols(), 0);
+
+            // temp test
+            for (int i = 0; i < N; i ++) {
+                P.col(i).maxCoeff(&max_p_nodes[i]);
+            }
+
+            MatrixXf pts_dis_sq_geodesic = MatrixXf::Zero(M, N);
+
+            // loop through all points
+            for (int i = 0; i < N; i ++) {
+                
+                P.col(i).maxCoeff(&max_p_nodes[i]);
+                int max_p_node = max_p_nodes[i];
+
+                int potential_2nd_max_p_node_1 = max_p_node - 1;
+                if (potential_2nd_max_p_node_1 == -1) {
+                    potential_2nd_max_p_node_1 = 2;
+                }
+
+                int potential_2nd_max_p_node_2 = max_p_node + 1;
+                if (potential_2nd_max_p_node_2 == M) {
+                    potential_2nd_max_p_node_2 = M - 3;
+                }
+
+                int next_max_p_node;
+                if (pt2pt_dis(Y.row(potential_2nd_max_p_node_1), X.row(i)) < pt2pt_dis(Y.row(potential_2nd_max_p_node_2), X.row(i))) {
+                    next_max_p_node = potential_2nd_max_p_node_1;
+                } 
+                else {
+                    next_max_p_node = potential_2nd_max_p_node_2;
+                }
+
+                // fill the current column of pts_dis_sq_geodesic
+                pts_dis_sq_geodesic(max_p_node, i) = pt2pt_dis_sq(Y.row(max_p_node), X.row(i));
+                pts_dis_sq_geodesic(next_max_p_node, i) = pt2pt_dis_sq(Y.row(next_max_p_node), X.row(i));
+
+                if (max_p_node < next_max_p_node) {
+                    for (int j = 0; j < max_p_node; j ++) {
+                        pts_dis_sq_geodesic(j, i) = pow(abs(converted_node_coord[j] - converted_node_coord[max_p_node]) + pt2pt_dis(Y.row(max_p_node), X.row(i)), 2);
+                    }
+                    for (int j = next_max_p_node; j < M; j ++) {
+                        pts_dis_sq_geodesic(j, i) = pow(abs(converted_node_coord[j] - converted_node_coord[next_max_p_node]) + pt2pt_dis(Y.row(next_max_p_node), X.row(i)), 2);
+                    }
+                }
+                else {
+                    for (int j = 0; j < next_max_p_node; j ++) {
+                        pts_dis_sq_geodesic(j, i) = pow(abs(converted_node_coord[j] - converted_node_coord[next_max_p_node]) + pt2pt_dis(Y.row(next_max_p_node), X.row(i)), 2);
+                    }
+                    for (int j = max_p_node; j < M; j ++) {
+                        pts_dis_sq_geodesic(j, i) = pow(abs(converted_node_coord[j] - converted_node_coord[max_p_node]) + pt2pt_dis(Y.row(max_p_node), X.row(i)), 2);
+                    }
+                }
+            }
+
+            // update P
+            P = (-0.5 * pts_dis_sq_geodesic / sigma2).array().exp();
+        }
+        else {
+            P = P_stored.replicate(1, 1);
+        }
+        P = P.array().rowwise() / (P.colwise().sum().array() + c);
+
+        MatrixXf Pt1 = P.colwise().sum();  // this should have shape (N,) or (1, N)
+        MatrixXf P1 = P.rowwise().sum();
+        double Np = P1.sum();
+        MatrixXf PX = P * X;
+
+        // M step
+        MatrixXf A_matrix = P1.asDiagonal() * G + lambda * sigma2 * MatrixXf::Identity(M, M);
+        MatrixXf B_matrix = PX - P1.asDiagonal() * Y_0;
+
+        // MatrixXf W = A_matrix.householderQr().solve(B_matrix);
+        // MatrixXf W = A_matrix.completeOrthogonalDecomposition().solve(B_matrix);
+        MatrixXf W = A_matrix.completeOrthogonalDecomposition().solve(B_matrix);
+
+        MatrixXf T = Y_0 + G * W;
+        double trXtdPt1X = (X.transpose() * Pt1.asDiagonal() * X).trace();
+        double trPXtT = (PX.transpose() * T).trace();
+        double trTtdP1T = (T.transpose() * P1.asDiagonal() * T).trace();
+
+        sigma2 = (trXtdPt1X - 2*trPXtT + trTtdP1T) / (Np * D);
+
+        if (pt2pt_dis_sq(Y, Y_0 + G*W) < tol) {
+            Y = Y_0 + G*W;
+            ROS_INFO_STREAM("Iteration until convergence: " + std::to_string(it+1));
+            break;
+        }
+        else {
+            Y = Y_0 + G*W;
+        }
+
+        if (it == max_iter - 1) {
+            ROS_ERROR("optimization did not converge!");
+            break;
+        }
+    }
 }
 
 static std::vector<smmap::CollisionData> fake_collision_check(const AllGrippersSinglePose& gripper_poses) {
@@ -981,7 +1248,7 @@ Matrix3Xf CDCPD::cpd(const Matrix3Xf& X,
         // VectorXf P1 = (fgt2.compute(Y_fgt, a)).cast<float>(); //std::cout << "588\n";
         // P1 = P1.array()*Y_emit_prior.array();
 
-        // MatrixXd PX_fgt(TY.rows(), TY.cols());
+        // MatrixXf PX_fgt(TY.rows(), TY.cols());
         // for (size_t i = 0; i < TY.rows(); ++i) {
         //     // ArrayXd Xi = X_fgt.col(i).array();
         //     ArrayXd aXarray = X_fgt.col(i).array() * a;
@@ -1101,12 +1368,31 @@ Matrix3Xf CDCPD::cheng_cpd(const Matrix3Xf& X,
 					 	   const Eigen::Matrix3f& intr)
 {
 	cout << "real cheng is running..." << endl;
+
+    // MatrixXf Y_temp = Y.transpose();
+    // // cpd_lle (MatrixXf X,
+    // //           MatrixXf& Y,
+    // //           double& sigma2,
+    // //           double beta,
+    // //           double lambda,
+    // //           double gamma,
+    // //           double mu,
+    // //           int max_iter,
+    // //           double tol,
+    // //           bool include_lle,
+    // //           bool use_geodesic,
+    // //           bool use_prev_sigma2)
+    // cpd_lle(X.transpose(), Y_temp, last_sigma2, beta, alpha, start_lambda, 0.05, 50, 0.00001, true, true, true);
+    // std::cout << Y_temp << std::endl;
+
+    // Matrix3Xf TY = Y_temp.transpose();
+
     // downsampled_cloud: PointXYZ pointer to downsampled point clouds
     // Y: (3, M) matrix Y^t (Y in IV.A) in the paper
     // depth: CV_16U depth image
     // mask: CV_8U mask for segmentation label
 
-    Eigen::VectorXf Y_emit_prior = visibility_prior(Y, depth, mask, intr, kvis);
+    // Eigen::VectorXf Y_emit_prior = visibility_prior(Y, depth, mask, intr, kvis);
     //Eigen::VectorXf Y_emit_prior(Y.cols());
     //for (int i = 0; i < Y.cols(); ++i)
     //{
@@ -1121,6 +1407,9 @@ Matrix3Xf CDCPD::cheng_cpd(const Matrix3Xf& X,
     // TY: Y^(t) in Algorithm 1
     Matrix3Xf TY = Y;
     double sigma2 = initial_sigma2(X, TY) * initial_sigma_scale;
+    if (last_sigma2 != 0) {
+        sigma2 = last_sigma2;
+    }
 
     int iterations = 0;
     double error = tolerance + 1; // loop runs the first time
@@ -1158,7 +1447,7 @@ Matrix3Xf CDCPD::cheng_cpd(const Matrix3Xf& X,
             c *= static_cast<double>(M) / N;
 
             P = (-P / (2 * sigma2)).array().exp().matrix();
-            P.array().colwise() *= Y_emit_prior.array();
+            // P.array().colwise() *= Y_emit_prior.array();
 
             RowVectorXf den = P.colwise().sum();
             den.array() += c;
@@ -1186,7 +1475,7 @@ Matrix3Xf CDCPD::cheng_cpd(const Matrix3Xf& X,
         // VectorXf P1 = (fgt2.compute(Y_fgt, a)).cast<float>(); //std::cout << "588\n";
         // P1 = P1.array()*Y_emit_prior.array();
 
-        // MatrixXd PX_fgt(TY.rows(), TY.cols());
+        // MatrixXf PX_fgt(TY.rows(), TY.cols());
         // for (size_t i = 0; i < TY.rows(); ++i) {
         //     // ArrayXd Xi = X_fgt.col(i).array();
         //     ArrayXd aXarray = X_fgt.col(i).array() * a;
@@ -1255,10 +1544,10 @@ Matrix3Xf CDCPD::cheng_cpd(const Matrix3Xf& X,
         double trPXY = (TY.array() * PX.array()).sum(); //end = std::chrono::system_clock::now();std::cout << "576: " << (end-start).count() << std::endl;
         sigma2 = (xPx - 2 * trPXY + yPy) / (Np * D); //end = std::chrono::system_clock::now();std::cout << "577: " << (end-start).count() << std::endl;
 
-        if (sigma2 <= 0)
-        {
-            sigma2 = tolerance / 10;
-        }
+        // if (sigma2 <= 0)
+        // {
+        //     sigma2 = tolerance / 10;
+        // }
 
         #ifdef CPDLOG
         double prob_reg = calculate_prob_reg(X, TY, G, W, sigma2, Y_emit_prior, P);
@@ -1274,6 +1563,7 @@ Matrix3Xf CDCPD::cheng_cpd(const Matrix3Xf& X,
         error = std::abs(sigma2 - qprev);
         iterations++;
     }
+    last_sigma2 = sigma2;
     return TY;
 }
 Matrix3Xf CDCPD::cpd(const Matrix3Xf& X,
@@ -1367,7 +1657,7 @@ Matrix3Xf CDCPD::cpd(const Matrix3Xf& X,
         // VectorXf P1 = (fgt2.compute(Y_fgt, a)).cast<float>(); //std::cout << "588\n";
         // P1 = P1.array()*Y_emit_prior.array();
 
-        // MatrixXd PX_fgt(TY.rows(), TY.cols());
+        // MatrixXf PX_fgt(TY.rows(), TY.cols());
         // for (size_t i = 0; i < TY.rows(); ++i) {
         //     // ArrayXd Xi = X_fgt.col(i).array();
         //     ArrayXd aXarray = X_fgt.col(i).array() * a;
@@ -1642,11 +1932,28 @@ CDCPD::Output CDCPD::operator()(
     std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 
     Matrix3Xf TY, TY_pred;
-    if (is_prediction) {
-        // start = std::chrono::system_clock::now(); 
-        ROS_WARN_STREAM("used prediction");
-        TY_pred = predict(Y.cast<double>(), q_dot, q_config, pred_choice).cast<float>(); // end = std::chrono::system_clock::now(); std::cout << "predict: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
-        // TY_pred = Y;
+    // if (is_prediction) {
+    //     // start = std::chrono::system_clock::now(); 
+    //     ROS_WARN_STREAM("used prediction");
+    //     TY_pred = predict(Y.cast<double>(), q_dot, q_config, pred_choice).cast<float>(); // end = std::chrono::system_clock::now(); std::cout << "predict: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
+    //     // TY_pred = Y;
+    //     // for (int col = 0; col < gripper_idx.cols(); ++col)
+    //     // {
+    //     //     for (int row = gripper_idx.rows() - 1; row < gripper_idx.rows(); ++row)
+    //     //     {
+    //     //         FixedPoint pt;
+    //     //         pt.template_index = gripper_idx(row, col);
+    //     //         pt.position = TY_pred.col(pt.template_index);
+    //     //         pred_fixed_points.push_back(pt);
+    //     //     }
+    //     // }
+    //     // VectorXi occl_idx = is_occluded(TY_pred, depth, mask, intrinsics_eigen);
+    //     // std::ofstream(workingDir + "/occluded_index.txt", std::ofstream::out) << occl_idx << "\n\n";
+	// 	TY = cpd(X, Y, TY_pred, depth, mask, intrinsics_eigen); // end = std::chrono::system_clock::now(); std::cout << "cpd: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
+    //     // Matrix3Xf TY = blend_result(TY_pred, TY_cpd, occl_idx);
+    // }
+    // else
+    // {
         // for (int col = 0; col < gripper_idx.cols(); ++col)
         // {
         //     for (int row = gripper_idx.rows() - 1; row < gripper_idx.rows(); ++row)
@@ -1657,26 +1964,9 @@ CDCPD::Output CDCPD::operator()(
         //         pred_fixed_points.push_back(pt);
         //     }
         // }
-        // VectorXi occl_idx = is_occluded(TY_pred, depth, mask, intrinsics_eigen);
-        // std::ofstream(workingDir + "/occluded_index.txt", std::ofstream::out) << occl_idx << "\n\n";
-		TY = cpd(X, Y, TY_pred, depth, mask, intrinsics_eigen); // end = std::chrono::system_clock::now(); std::cout << "cpd: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
-        // Matrix3Xf TY = blend_result(TY_pred, TY_cpd, occl_idx);
-    }
-    else
-    {
-        // for (int col = 0; col < gripper_idx.cols(); ++col)
-        // {
-        //     for (int row = gripper_idx.rows() - 1; row < gripper_idx.rows(); ++row)
-        //     {
-        //         FixedPoint pt;
-        //         pt.template_index = gripper_idx(row, col);
-        //         pt.position = TY_pred.col(pt.template_index);
-        //         pred_fixed_points.push_back(pt);
-        //     }
-        // }
-        cout << "original cheng is used" << endl;
-        TY = cheng_cpd(X, Y, depth, mask, intrinsics_eigen);
-    } 
+    cout << "original cheng is used" << endl;
+    TY = cheng_cpd(X, Y, depth, mask, intrinsics_eigen);
+    // } 
 
 
     // Next step: optimization.
@@ -1922,15 +2212,32 @@ CDCPD::Output CDCPD::operator()(
     std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 
     Matrix3Xf TY, TY_pred;
-    if (is_prediction) {
-        // start = std::chrono::system_clock::now(); 
-		if (model != NULL) {
-            ROS_WARN_STREAM("used prediction");
-        	TY_pred = predict(Y.cast<double>(), q_dot_valid, q_config_valid, pred_choice).cast<float>();
-		} else {
-			TY_pred = Y;
-		}
-        // TY_pred = Y;
+    // if (is_prediction) {
+    //     // start = std::chrono::system_clock::now(); 
+	// 	if (model != NULL) {
+    //         ROS_WARN_STREAM("used prediction");
+    //     	TY_pred = predict(Y.cast<double>(), q_dot_valid, q_config_valid, pred_choice).cast<float>();
+	// 	} else {
+	// 		TY_pred = Y;
+	// 	}
+    //     // TY_pred = Y;
+    //     // for (int col = 0; col < gripper_idx.cols(); ++col)
+    //     // {
+    //     //     for (int row = gripper_idx.rows() - 1; row < gripper_idx.rows(); ++row)
+    //     //     {
+    //     //         FixedPoint pt;
+    //     //         pt.template_index = gripper_idx(row, col);
+    //     //         pt.position = TY_pred.col(pt.template_index);
+    //     //         pred_fixed_points.push_back(pt);
+    //     //     }
+    //     // }
+    //     // VectorXi occl_idx = is_occluded(TY_pred, depth, mask, intrinsics_eigen);
+    //     // std::ofstream(workingDir + "/occluded_index.txt", std::ofstream::out) << occl_idx << "\n\n";
+	// 	TY = cpd(X, Y, TY_pred, depth, mask, intrinsics_eigen); // end = std::chrono::system_clock::now(); std::cout << "cpd: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
+    //     // Matrix3Xf TY = blend_result(TY_pred, TY_cpd, occl_idx);
+    // }
+    // else
+    // {
         // for (int col = 0; col < gripper_idx.cols(); ++col)
         // {
         //     for (int row = gripper_idx.rows() - 1; row < gripper_idx.rows(); ++row)
@@ -1941,25 +2248,9 @@ CDCPD::Output CDCPD::operator()(
         //         pred_fixed_points.push_back(pt);
         //     }
         // }
-        // VectorXi occl_idx = is_occluded(TY_pred, depth, mask, intrinsics_eigen);
-        // std::ofstream(workingDir + "/occluded_index.txt", std::ofstream::out) << occl_idx << "\n\n";
-		TY = cpd(X, Y, TY_pred, depth, mask, intrinsics_eigen); // end = std::chrono::system_clock::now(); std::cout << "cpd: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
-        // Matrix3Xf TY = blend_result(TY_pred, TY_cpd, occl_idx);
-    }
-    else
-    {
-        // for (int col = 0; col < gripper_idx.cols(); ++col)
-        // {
-        //     for (int row = gripper_idx.rows() - 1; row < gripper_idx.rows(); ++row)
-        //     {
-        //         FixedPoint pt;
-        //         pt.template_index = gripper_idx(row, col);
-        //         pt.position = TY_pred.col(pt.template_index);
-        //         pred_fixed_points.push_back(pt);
-        //     }
-        // }
-        TY = cheng_cpd(X, Y, depth, mask, intrinsics_eigen);
-    } 
+    cout << "original cheng is used" << endl;
+    TY = cheng_cpd(X, Y, depth, mask, intrinsics_eigen);
+    // } 
 
 
 
@@ -2094,9 +2385,26 @@ CDCPD::Output CDCPD::operator()(
     std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
 
     Matrix3Xf TY, TY_pred;
-    if (is_prediction) {
-		TY_pred = Y;
-        // TY_pred = Y;
+    // if (is_prediction) {
+	// 	TY_pred = Y;
+    //     // TY_pred = Y;
+    //     // for (int col = 0; col < gripper_idx.cols(); ++col)
+    //     // {
+    //     //     for (int row = gripper_idx.rows() - 1; row < gripper_idx.rows(); ++row)
+    //     //     {
+    //     //         FixedPoint pt;
+    //     //         pt.template_index = gripper_idx(row, col);
+    //     //         pt.position = TY_pred.col(pt.template_index);
+    //     //         pred_fixed_points.push_back(pt);
+    //     //     }
+    //     // }
+    //     // VectorXi occl_idx = is_occluded(TY_pred, depth, mask, intrinsics_eigen);
+    //     // std::ofstream(workingDir + "/occluded_index.txt", std::ofstream::out) << occl_idx << "\n\n";
+	// 	TY = cpd(X, Y, TY_pred, depth, mask, intrinsics_eigen); // end = std::chrono::system_clock::now(); std::cout << "cpd: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
+    //     // Matrix3Xf TY = blend_result(TY_pred, TY_cpd, occl_idx);
+    // }
+    // else
+    // {
         // for (int col = 0; col < gripper_idx.cols(); ++col)
         // {
         //     for (int row = gripper_idx.rows() - 1; row < gripper_idx.rows(); ++row)
@@ -2107,25 +2415,9 @@ CDCPD::Output CDCPD::operator()(
         //         pred_fixed_points.push_back(pt);
         //     }
         // }
-        // VectorXi occl_idx = is_occluded(TY_pred, depth, mask, intrinsics_eigen);
-        // std::ofstream(workingDir + "/occluded_index.txt", std::ofstream::out) << occl_idx << "\n\n";
-		TY = cpd(X, Y, TY_pred, depth, mask, intrinsics_eigen); // end = std::chrono::system_clock::now(); std::cout << "cpd: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
-        // Matrix3Xf TY = blend_result(TY_pred, TY_cpd, occl_idx);
-    }
-    else
-    {
-        // for (int col = 0; col < gripper_idx.cols(); ++col)
-        // {
-        //     for (int row = gripper_idx.rows() - 1; row < gripper_idx.rows(); ++row)
-        //     {
-        //         FixedPoint pt;
-        //         pt.template_index = gripper_idx(row, col);
-        //         pt.position = TY_pred.col(pt.template_index);
-        //         pred_fixed_points.push_back(pt);
-        //     }
-        // }
-        TY = cheng_cpd(X, Y, depth, mask, intrinsics_eigen);
-    } 
+    cout << "original cheng is used" << endl;
+    TY = cheng_cpd(X, Y, depth, mask, intrinsics_eigen);
+    // } 
 
 
 

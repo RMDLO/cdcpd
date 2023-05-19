@@ -593,6 +593,10 @@ Matrix3Xf Optimizer::operator()(const Matrix3Xf& Y, const Matrix2Xi& E, const st
         {
             for (ssize_t i = 0; i < E.cols(); ++i)
             {
+                // std::cout << E << std::endl;
+                if (i == 19 || i == 39) {
+                    continue;
+                }
                 model.addQConstr(
                             buildDifferencingQuadraticTerm(&vars[E(0, i) * 3], &vars[E(1, i) * 3], 3),
                             GRB_LESS_EQUAL,
@@ -650,6 +654,9 @@ Matrix3Xf Optimizer::operator()(const Matrix3Xf& Y, const Matrix2Xi& E, const st
             auto [startPts, endPts] = nearest_points_line_segments(last_template, E);
             for (int row = 0; row < E.cols(); ++row)
             {
+                if (row == 19 || row == 39) {
+                    continue;
+                }
                 Vector3f P1 = last_template.col(E(0, row));
                 Vector3f P2 = last_template.col(E(1, row));
                 for (int col = 0; col < E.cols(); ++col)
@@ -659,7 +666,7 @@ Matrix3Xf Optimizer::operator()(const Matrix3Xf& Y, const Matrix2Xi& E, const st
                     Vector3f P3 = last_template.col(E(0, col));
                     Vector3f P4 = last_template.col(E(1, col));
                     float l = (endPts.col(row*E.cols() + col).topRows(3) - startPts.col(row*E.cols() + col).topRows(3)).norm();
-                    if (!P1.isApprox(P3) && !P1.isApprox(P4) && !P2.isApprox(P3) && !P2.isApprox(P4) && l <= 0.02) {
+                    if (!P1.isApprox(P3) && !P1.isApprox(P4) && !P2.isApprox(P3) && !P2.isApprox(P4) && l <= 0.001) { // this <= statement controls somewhat like the impact radius of this constraint
                         // model.addConstr((vars[E(0, col)*3 + 0] - startPts(0, row*E.cols() + col))*(endPts(0, row*E.cols() + col) - startPts(0, row*E.cols() + col)) +
                         //                 (vars[E(0, col)*3 + 1] - startPts(1, row*E.cols() + col))*(endPts(1, row*E.cols() + col) - startPts(1, row*E.cols() + col)) +
                         //                 (vars[E(0, col)*3 + 2] - startPts(2, row*E.cols() + col))*(endPts(2, row*E.cols() + col) - startPts(2, row*E.cols() + col)) >= 0);
@@ -671,7 +678,7 @@ Matrix3Xf Optimizer::operator()(const Matrix3Xf& Y, const Matrix2Xi& E, const st
                                         ((vars[E(0, col)*3 + 1]*(1-t) + vars[E(1, col)*3 + 1]*t) - (vars[E(0, row)*3 + 1]*(1-s) + vars[E(1, row)*3 + 1]*s))
                                             *(endPts(1, row*E.cols() + col) - startPts(1, row*E.cols() + col)) +
                                         ((vars[E(0, col)*3 + 2]*(1-t) + vars[E(1, col)*3 + 2]*t) - (vars[E(0, row)*3 + 2]*(1-s) + vars[E(1, row)*3 + 2]*s))
-                                            *(endPts(2, row*E.cols() + col) - startPts(2, row*E.cols() + col)) >= 0.01 * l);
+                                            *(endPts(2, row*E.cols() + col) - startPts(2, row*E.cols() + col)) >= 0.007 * l);  // this param is the min distance between segments
                     }
                 }
             }
@@ -757,6 +764,7 @@ Matrix3Xf Optimizer::operator()(const Matrix3Xf& Y, const Matrix2Xi& E, const st
 	// auto [nearestPts, normalVecs] = nearest_points_and_normal(last_template);
     // return force_pts(nearestPts, normalVecs, Y_opt);
 	return Y_opt;
+	// return Y;
 }
 
 bool Optimizer::all_constraints_satisfiable(const std::vector<CDCPD::FixedPoint>& fixed_points) const
