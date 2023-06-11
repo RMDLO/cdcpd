@@ -66,7 +66,7 @@ using std::cout;
 using std::endl;
 using std::string;
 using std::stringstream;
-using Eigen::MatrixXd;
+using Eigen::MatrixXf;
 using Eigen::Matrix3d;
 using Eigen::Matrix3f;
 using cv::Matx33d;
@@ -82,9 +82,22 @@ using Eigen::VectorXd;
 using Eigen::VectorXi;
 using pcl::PointXYZ;
 
+ros::Subscriber camera_info_sub;
+
+MatrixXf proj_matrix(3, 4);
+bool received_proj_matrix = false;
+ros::Publisher results_pub;
+
+// read gripper tf
+tf2_ros::Buffer tfBuffer;
+
+Mat occlusion_mask;
+bool updated_opencv_mask = false;
+std::vector<double> gripper_pt;
+std::vector<double> last_gripper_pt;
+
 // ---------- CONFIG -----------
 int num_of_nodes;
-bool use_eval_rope;
 
 // cdcpd2 params
 bool is_gripper_info;
@@ -94,11 +107,12 @@ bool use_real_gripper;
 int bag_file;
 double bag_rate;
 
+bool multi_color_dlo;
 double alpha;
 double beta;
 double lambda;
 float zeta;
-double leaf_size;
+double downsample_leaf_size;
 
 double k_spring;
 bool is_sim;
@@ -114,6 +128,17 @@ double left_z;
 double right_x; 
 double right_y; 
 double right_z;
+
+// color thresholding 
+std::string camera_info_topic;
+std::string rgb_topic;
+std::string depth_topic;
+std::string hsv_threshold_upper_limit;
+std::string hsv_threshold_lower_limit;
+std::vector<int> upper;
+std::vector<int> lower;
+double visibility_threshold;
+
 // ---------- END OF CONFIG -----------
 
 template <typename T>
@@ -274,49 +299,20 @@ MatrixXf sort_pts (MatrixXf Y_0) {
     return Y_0_sorted;
 }
 
-ros::Publisher results_pub;
-
-// read gripper tf
-tf2_ros::Buffer tfBuffer;
+void update_camera_info (const sensor_msgs::CameraInfoConstPtr& cam_msg) {
+    auto P = cam_msg->P;
+    for (int i = 0; i < P.size(); i ++) {
+        proj_matrix(i/4, i%4) = P[i];
+    }
+    std::cout << "received projection matrix" << std::endl;
+    received_proj_matrix = true;
+    camera_info_sub.shutdown();
+}
 
 // node color and object color are in rgba format and range from 0-1
-visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf gripped_pt, MatrixXf Y, std::string marker_frame, std::string marker_ns, std::vector<float> node_color, std::vector<float> line_color) {
+visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf Y, std::string marker_frame, std::string marker_ns, std::vector<float> node_color, std::vector<float> line_color) {
     // publish the results as a marker array
     visualization_msgs::MarkerArray results = visualization_msgs::MarkerArray();
-
-    visualization_msgs::Marker cur_node_result = visualization_msgs::Marker();
-    
-    // add header
-    cur_node_result.header.frame_id = marker_frame;
-    // cur_node_result.header.stamp = ros::Time::now();
-    cur_node_result.type = visualization_msgs::Marker::SPHERE;
-    cur_node_result.action = visualization_msgs::Marker::ADD;
-    cur_node_result.ns = marker_ns + std::to_string(99);
-    cur_node_result.id = 99;
-
-    // add position
-    cur_node_result.pose.position.x = gripped_pt(0, 0);
-    cur_node_result.pose.position.y = gripped_pt(0, 1);
-    cur_node_result.pose.position.z = gripped_pt(0, 2);
-
-    // add orientation
-    cur_node_result.pose.orientation.w = 1.0;
-    cur_node_result.pose.orientation.x = 0.0;
-    cur_node_result.pose.orientation.y = 0.0;
-    cur_node_result.pose.orientation.z = 0.0;
-
-    // set scale
-    cur_node_result.scale.x = 0.01;
-    cur_node_result.scale.y = 0.01;
-    cur_node_result.scale.z = 0.01;
-
-    // set color
-    cur_node_result.color.r = 1.0;
-    cur_node_result.color.g = 0.0;
-    cur_node_result.color.b = 0.0;
-    cur_node_result.color.a = 1.0;
-
-    results.markers.push_back(cur_node_result);
 
     for (int i = 0; i < Y.rows(); i ++) {
         visualization_msgs::Marker cur_node_result = visualization_msgs::Marker();
@@ -400,8 +396,6 @@ visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf gripped_pt, Matri
     return results;
 }
 
-Mat occlusion_mask;
-bool updated_opencv_mask = false;
 void update_opencv_mask (const sensor_msgs::ImageConstPtr& opencv_mask_msg) {
     occlusion_mask = cv_bridge::toCvShare(opencv_mask_msg, "bgr8")->image;
     if (!occlusion_mask.empty()) {
@@ -420,18 +414,7 @@ static pcl::PointCloud<pcl::PointXYZ>::Ptr Matrix3Xf2pcptr(const Eigen::Matrix3X
 }
 
 std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
-{
-    // if (bag_file == 0) {
-    //     left_x = 0.0f; left_y = -0.05f; left_z = 0.6f; right_x = 0.0f; right_y = -0.78f; right_z = 0.6f;
-    // }
-    // else if (bag_file == 1) {
-    //     left_x = -0.1f; left_y = 0.0f; left_z = 0.6f; right_x = -0.83f; right_y = 0.0f; right_z = 0.6f;
-    // }
-    // else {
-    //     // default 
-    //     left_x = -0.1f; left_y = 0.0f; left_z = 0.6f; right_x = -0.83f; right_y = 0.0f; right_z = 0.6f;
-    // }
-    
+{   
 	int points_on_rope = num_of_nodes;
 
     MatrixXf vertices(3, points_on_rope); // Y^0 in the paper
@@ -452,9 +435,6 @@ std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template()
     return std::make_tuple(vertices, edges);
 }
 
-std::vector<double> gripper_pt;
-std::vector<double> last_gripper_pt;
-
 std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_gmm(MatrixXf Y_gmm)
 {
 	int points_on_rope = Y_gmm.rows();
@@ -473,6 +453,39 @@ std::tuple<Eigen::Matrix3Xf, Eigen::Matrix2Xi> init_template_gmm(MatrixXf Y_gmm)
     // std::cout << vertices << std::endl;
 
     return std::make_tuple(vertices, edges);
+}
+
+Mat color_thresholding (Mat cur_image_hsv) {
+    std::vector<int> lower_blue = {90, 90, 60};
+    std::vector<int> upper_blue = {130, 255, 255};
+
+    std::vector<int> lower_red_1 = {130, 60, 50};
+    std::vector<int> upper_red_1 = {255, 255, 255};
+
+    std::vector<int> lower_red_2 = {0, 60, 50};
+    std::vector<int> upper_red_2 = {10, 255, 255};
+
+    std::vector<int> lower_yellow = {15, 100, 80};
+    std::vector<int> upper_yellow = {40, 255, 255};
+
+    Mat mask_blue, mask_red_1, mask_red_2, mask_red, mask_yellow, mask;
+    // filter blue
+    cv::inRange(cur_image_hsv, cv::Scalar(lower_blue[0], lower_blue[1], lower_blue[2]), cv::Scalar(upper_blue[0], upper_blue[1], upper_blue[2]), mask_blue);
+
+    // filter red
+    cv::inRange(cur_image_hsv, cv::Scalar(lower_red_1[0], lower_red_1[1], lower_red_1[2]), cv::Scalar(upper_red_1[0], upper_red_1[1], upper_red_1[2]), mask_red_1);
+    cv::inRange(cur_image_hsv, cv::Scalar(lower_red_2[0], lower_red_2[1], lower_red_2[2]), cv::Scalar(upper_red_2[0], upper_red_2[1], upper_red_2[2]), mask_red_2);
+
+    // filter yellow
+    cv::inRange(cur_image_hsv, cv::Scalar(lower_yellow[0], lower_yellow[1], lower_yellow[2]), cv::Scalar(upper_yellow[0], upper_yellow[1], upper_yellow[2]), mask_yellow);
+
+    // combine red mask
+    cv::bitwise_or(mask_red_1, mask_red_2, mask_red);
+    // combine overall mask
+    cv::bitwise_or(mask_red, mask_blue, mask);
+    cv::bitwise_or(mask_yellow, mask, mask);
+
+    return mask;
 }
 
 CDCPD cdcpd;
@@ -505,533 +518,503 @@ MatrixXf Y_init;
 std::chrono::steady_clock::time_point gripper_time = std::chrono::steady_clock::now();
 
 // sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
-sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::PointCloud2ConstPtr& pc_msg) {
+sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, const sensor_msgs::ImageConstPtr& depth_msg) {
     
-    if (!initialized) {
-        start_time = std::chrono::steady_clock::now();
-    }
-
-    // log time
-    std::chrono::steady_clock::time_point cur_time_cb = std::chrono::steady_clock::now();
-
-    Mat mask_blue, mask_red_1, mask_red_2, mask_red, mask_yellow, mask, mask_rgb;
     Mat cur_image_orig = cv_bridge::toCvShare(image_msg, "bgr8")->image;
-    cout << "finished first conversion" << std::endl;
-    Mat cur_image_hsv;
+    Mat cur_depth = cv_bridge::toCvShare(depth_msg, depth_msg->encoding)->image;
 
-    // for cdcpd2
-    Mat rgb_image = cv_bridge::toCvShare(image_msg, "bgr8")->image;
-    cout << "finished second conversion" << std::endl;
+    // will get overwritten later if intialized
+    sensor_msgs::ImagePtr tracking_img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", cur_image_orig).toImageMsg();
 
-    // Mat depth_image = cv_bridge::toCvShare(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1)->image;
-    // cout << "finished third conversion" << std::endl;
+    std::cout << "finished image conversions" << std::endl;
 
-    // convert color
-    cv::cvtColor(cur_image_orig, cur_image_hsv, cv::COLOR_BGR2HSV);
+    if (received_proj_matrix) {
+        if (!initialized) {
+            start_time = std::chrono::steady_clock::now();
+        }
+        // log time
+        std::chrono::steady_clock::time_point cur_time_cb = std::chrono::steady_clock::now();
 
-    std::vector<int> lower_blue = {90, 90, 90};
-    std::vector<int> upper_blue = {130, 255, 255};
+        Mat mask, mask_rgb, mask_without_occlusion_block;
+        Mat cur_image_hsv;
 
-    std::vector<int> lower_red_1 = {130, 60, 40};
-    std::vector<int> upper_red_1 = {255, 255, 255};
+        // convert color
+        cv::cvtColor(cur_image_orig, cur_image_hsv, cv::COLOR_BGR2HSV);
 
-    std::vector<int> lower_red_2 = {0, 60, 40};
-    std::vector<int> upper_red_2 = {10, 255, 255};
+        if (!multi_color_dlo) {
+            // color_thresholding
+            cv::inRange(cur_image_hsv, cv::Scalar(lower[0], lower[1], lower[2]), cv::Scalar(upper[0], upper[1], upper[2]), mask_without_occlusion_block);
+        }
+        else {
+            mask_without_occlusion_block = color_thresholding(cur_image_hsv);
+        }
 
-    std::vector<int> lower_yellow = {15, 100, 80};
-    std::vector<int> upper_yellow = {40, 255, 255};
+        // update cur image for visualization
+        Mat cur_image;
+        Mat occlusion_mask_gray;
+        if (updated_opencv_mask) {
+            cv::cvtColor(occlusion_mask, occlusion_mask_gray, cv::COLOR_BGR2GRAY);
+            cv::bitwise_and(mask_without_occlusion_block, occlusion_mask_gray, mask);
+            cv::bitwise_and(cur_image_orig, occlusion_mask, cur_image);
+        }
+        else {
+            mask_without_occlusion_block.copyTo(mask);
+            cur_image_orig.copyTo(cur_image);
+        }
+        cv::cvtColor(mask, mask_rgb, cv::COLOR_GRAY2BGR);
 
-    Mat mask_without_occlusion_block;
+        // initialize point cloud for publishing results
+        sensor_msgs::PointCloud2 cur_pc_downsampled_pointcloud2;
+        sensor_msgs::PointCloud2 result_pc;
 
-    if (use_eval_rope) {
-        // filter blue
-        cv::inRange(cur_image_hsv, cv::Scalar(lower_blue[0], lower_blue[1], lower_blue[2]), cv::Scalar(upper_blue[0], upper_blue[1], upper_blue[2]), mask_blue);
+        bool simulated_occlusion = false;
+        int occlusion_corner_i = -1;
+        int occlusion_corner_j = -1;
+        int occlusion_corner_i_2 = -1;
+        int occlusion_corner_j_2 = -1;
 
-        // filter red
-        cv::inRange(cur_image_hsv, cv::Scalar(lower_red_1[0], lower_red_1[1], lower_red_1[2]), cv::Scalar(upper_red_1[0], upper_red_1[1], upper_red_1[2]), mask_red_1);
-        cv::inRange(cur_image_hsv, cv::Scalar(lower_red_2[0], lower_red_2[1], lower_red_2[2]), cv::Scalar(upper_red_2[0], upper_red_2[1], upper_red_2[2]), mask_red_2);
+        // filter point cloud
+        pcl::PointCloud<pcl::PointXYZRGB> cur_pc;
+        pcl::PointCloud<pcl::PointXYZRGB> cur_pc_downsampled;
 
-        // combine red mask
-        cv::bitwise_or(mask_red_1, mask_red_2, mask_red);
+        // filter point cloud from mask
+        for (int i = 0; i < mask.rows; i ++) {
+            for (int j = 0; j < mask.cols; j ++) {
+                // for text label (visualization)
+                if (updated_opencv_mask && !simulated_occlusion && occlusion_mask_gray.at<uchar>(i, j) == 0) {
+                    occlusion_corner_i = i;
+                    occlusion_corner_j = j;
+                    simulated_occlusion = true;
+                }
 
-        // filter yellow
-        cv::inRange(cur_image_hsv, cv::Scalar(lower_yellow[0], lower_yellow[1], lower_yellow[2]), cv::Scalar(upper_yellow[0], upper_yellow[1], upper_yellow[2]), mask_yellow);
+                // update the other corner of occlusion mask (visualization)
+                if (updated_opencv_mask && occlusion_mask_gray.at<uchar>(i, j) == 0) {
+                    occlusion_corner_i_2 = i;
+                    occlusion_corner_j_2 = j;
+                }
 
-        // combine overall mask
-        cv::bitwise_or(mask_red, mask_blue, mask_without_occlusion_block);
-        cv::bitwise_or(mask_yellow, mask_without_occlusion_block, mask_without_occlusion_block);
-    }
-    else {
-        // filter blue
-        cv::inRange(cur_image_hsv, cv::Scalar(lower_blue[0], lower_blue[1], lower_blue[2]), cv::Scalar(upper_blue[0], upper_blue[1], upper_blue[2]), mask_blue);
+                double depth_threshold = 0.4 * 1000;  // millimeters
+                if (mask.at<uchar>(i, j) != 0 && cur_depth.at<uint16_t>(i, j) > depth_threshold) {
+                    // point cloud from image pixel coordinates and depth value
+                    pcl::PointXYZRGB point;
+                    double pixel_x = static_cast<double>(j);
+                    double pixel_y = static_cast<double>(i);
+                    double cx = proj_matrix(0, 2);
+                    double cy = proj_matrix(1, 2);
+                    double fx = proj_matrix(0, 0);
+                    double fy = proj_matrix(1, 1);
+                    double pc_z = cur_depth.at<uint16_t>(i, j) / 1000.0;
 
-        mask_blue.copyTo(mask_without_occlusion_block);
-    }
+                    point.x = (pixel_x - cx) * pc_z / fx;
+                    point.y = (pixel_y - cy) * pc_z / fy;
+                    point.z = pc_z;
 
-    // update cur image for visualization
-    Mat cur_image;
-    Mat occlusion_mask_gray;
-    if (updated_opencv_mask) {
-        cv::cvtColor(occlusion_mask, occlusion_mask_gray, cv::COLOR_BGR2GRAY);
-        cv::bitwise_and(mask_without_occlusion_block, occlusion_mask_gray, mask);
-        cv::bitwise_and(cur_image_orig, occlusion_mask, cur_image);
-    }
-    else {
-        mask_without_occlusion_block.copyTo(mask);
-        cur_image_orig.copyTo(cur_image);
-    }
+                    // currently missing point field so color doesn't show up in rviz
+                    point.r = cur_image_orig.at<cv::Vec3b>(i, j)[0];
+                    point.g = cur_image_orig.at<cv::Vec3b>(i, j)[1];
+                    point.b = cur_image_orig.at<cv::Vec3b>(i, j)[2];
 
-    cv::cvtColor(mask, mask_rgb, cv::COLOR_GRAY2BGR);
-    // publish mask
-    sensor_msgs::ImagePtr mask_msg = nullptr;
-    mask_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", mask_rgb).toImageMsg();
-
-    // deal with point cloud 
-    pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
-    // Convert to PCL data type
-    pcl_conversions::toPCL(*pc_msg, *cloud);   // cloud is 720*1280 (height*width) now, however is a ros pointcloud2 message. 
-                                            // see message definition here: http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/PointCloud2.html
-
-    if (cloud->width == 0 && cloud->height == 0) {
-        ROS_ERROR("empty point cloud!");
-        return mask_msg;
-    }
-
-    // std::cout << "non empty point cloud" << std::endl;
-
-    // convert to xyz point
-    pcl::PointCloud<pcl::PointXYZRGB> cloud_xyz;
-    pcl::fromPCLPointCloud2(*cloud, cloud_xyz);
-    // now create objects for cur_pc
-    pcl::PCLPointCloud2* cur_pc = new pcl::PCLPointCloud2;
-    pcl::PointCloud<pcl::PointXYZRGB> cur_pc_xyz;
-    pcl::PointCloud<pcl::PointXYZRGB> cur_nodes_xyz;
-    pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz;
-
-    pcl::PointCloud<pcl::PointXYZRGB> cur_yellow_xyz;
-
-    // temp depth from pc
-    Mat depth_image = Mat::zeros(cloud->height, cloud->width, CV_64F);
-
-    // filter point cloud from mask
-    for (int i = 0; i < cloud->height; i ++) {
-        for (int j = 0; j < cloud->width; j ++) {
-            depth_image.at<uchar>(i, j) = cloud_xyz(j, i).z;
-
-            // should not pick up points from the gripper
-            if (bag_file == 2) {
-                if (cloud_xyz(j, i).x < -0.15 || cloud_xyz(j, i).y < -0.15 || cloud_xyz(j, i).z < 0.58) {
-                    continue;
+                    cur_pc.push_back(point);
                 }
             }
-            else if (bag_file == 1) {
-                if ((cloud_xyz(j, i).x < 0.0 && cloud_xyz(j, i).y < 0.05) || cloud_xyz(j, i).z < 0.58 || 
-                        cloud_xyz(j, i).x < -0.2 || (cloud_xyz(j, i).x < 0.1 && cloud_xyz(j, i).y < -0.05)) {
-                    continue;
-                }
+        }
+
+        // Perform downsampling
+        pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloudPtr(cur_pc.makeShared());
+        pcl::VoxelGrid<pcl::PointXYZRGB> sor;
+        sor.setInputCloud (cloudPtr);
+        sor.setLeafSize (downsample_leaf_size, downsample_leaf_size, downsample_leaf_size);
+        sor.filter(cur_pc_downsampled);
+
+        geometry_msgs::TransformStamped gripper_tf;
+        if (use_real_gripper) {
+            gripper_tf = tfBuffer.lookupTransform("camera_color_optical_frame", "tool0_m", ros::Time(0));
+            std::cout << "translation: " << gripper_tf.transform.translation.x << "; " << gripper_tf.transform.translation.y << "; " << gripper_tf.transform.translation.z << std::endl;
+        }
+
+        std::cout << "finished point cloud processing" << std::endl;
+
+        if (!initialized) {
+            // MatrixXf X = cur_pc_downsampled.getMatrixXfMap().topRows(3).transpose();
+            // MatrixXf Y_gmm = reg(X, num_of_nodes, 0.05, 100);
+            // Y_gmm = sort_pts(Y_gmm);
+
+            std::cout << "uninitialized" << std::endl;
+
+            if (is_gripper_info && use_real_gripper) {
+                gripper_pt = {gripper_tf.transform.translation.x, gripper_tf.transform.translation.y, gripper_tf.transform.translation.z};
+                last_gripper_pt = {gripper_tf.transform.translation.x, gripper_tf.transform.translation.y, gripper_tf.transform.translation.z};
             }
             else {
-                if (cloud_xyz(j, i).z < 0.58) {
-                    continue;
-                }
+                gripper_pt = {0.0, 0.0, 0.0};
+                last_gripper_pt = {0.0, 0.0, 0.0};
             }
 
-            if (mask.at<uchar>(i, j) != 0) {
-                cur_pc_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
+            // auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
+            auto [template_vertices_, template_edges_] = init_template();
+            // auto [template_vertices_, template_edges_] = init_template_hardcoded();
+            template_vertices = template_vertices_.replicate(1, 1);
+            template_edges = template_edges_.replicate(1, 1);
+            template_cloud = Matrix3Xf2pcptr(template_vertices);
+            template_cloud_init = Matrix3Xf2pcptr(template_vertices);
+
+            std::cout << "finished template initializaiton" << std::endl;
+
+            // cdcpd2 init
+            std::vector<float> cylinder_data(8);
+            std::vector<float> quat(4);
+            // Matrix3Xf init_points(3, 3);
+
+            for (int i = 0; i < 8; i++) {
+                cylinder_data[i] = 0.1f;
             }
-            if (mask_yellow.at<uchar>(i, j) != 0) {
-                cur_yellow_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
+
+            for (int i = 0; i < 4; i++) {
+                quat[i] = 1.4f;
             }
-        }
-    }
 
-    geometry_msgs::TransformStamped transformStamped;
-    if (bag_file != 0) {
-        transformStamped = tfBuffer.lookupTransform("camera_color_optical_frame", "tool0_m", ros::Time(0));
-    }
-    if (use_real_gripper) {
-        std::cout << "translation: " << transformStamped.transform.translation.x << "; " << transformStamped.transform.translation.y << "; " << transformStamped.transform.translation.z << std::endl;
-    }
+            cdcpd = CDCPD(template_cloud,
+                        template_edges,
+                        false,
+                        alpha,
+                        beta,
+                        lambda,
+                        k_spring,
+                        zeta,
+                        cylinder_data,
+                        is_sim);
+            cdcpd.kvis = 100;
+            // end of cdcpd2 init
 
-    MatrixXf cur_yellow_pts = cur_yellow_xyz.getMatrixXfMap().topRows(3).transpose();
-    std::cout << cur_yellow_pts.rows() << std::endl;
-    MatrixXf head_node = reg(cur_yellow_pts, 1, 0.1, 100);
-    // std::cout << "head node: " << head_node << std::endl;
+            // Eigen::Matrix3f intrinsics_eigen(3, 3);
+            // intrinsics_eigen << 918.359130859375, 0.0, 645.8908081054688,
+            //                     0.0, 916.265869140625, 354.02392578125,
+            //                     0.0, 0.0, 1.0;
+            // intrinsics_eigen.cast<float>();
 
-    // convert back to pointcloud2 message
-    pcl::toPCLPointCloud2(cur_pc_xyz, *cur_pc);
-    // Perform downsampling
-    pcl::PCLPointCloud2ConstPtr cloudPtr(cur_pc);
-    pcl::PCLPointCloud2 cur_pc_downsampled;
-    pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
-    sor.setInputCloud (cloudPtr);
+            // for (int i = 0; i < 10; i ++) {
+            //     std::cout << "running initializaiton cpd" << std::endl;
+            //     cdcpd.cpd(X, template_vertices, Y_init.transpose(), cur_depth, mask, intrinsics_eigen);
+            // }
+            
+            // template_cloud = Matrix3Xf2pcptr(template_vertices);
 
-    double time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0 * bag_rate;
-    double cutoff_time = 5.0;
-    if (bag_file == 0) {
-        cutoff_time = 8.0;
-    }
-    if (time_from_start > cutoff_time) {
-        sor.setLeafSize (leaf_size, leaf_size, leaf_size);
-    }
-    else {
-        if (bag_file == 0) {
-            sor.setLeafSize (0.002, 0.002, 0.002);
+            initialized = true;
+
+            std::cout << "finished cdcpd2 initialization" << std::endl;
         }
         else {
-            sor.setLeafSize (0.0035, 0.0035, 0.0035);
-        }
-    }
-    
-    sor.filter (cur_pc_downsampled);
+            // ========================================================================
+            cv::Matx33d placeholder;
+            std::vector<CDCPD::FixedPoint> fixed_points;
+            Eigen::Vector3f left_pos;
+            CDCPD::FixedPoint left_gripper;
+            Eigen::Vector3f right_pos;
+            CDCPD::FixedPoint right_gripper;
+            std::vector<bool> is_grasped;
 
-    pcl::fromPCLPointCloud2(cur_pc_downsampled, downsampled_xyz);
+            if (is_gripper_info && use_real_gripper) {
+                gripper_pt = {gripper_tf.transform.translation.x, gripper_tf.transform.translation.y, gripper_tf.transform.translation.z};
+                left_pos << (float)gripper_pt[0], (float)gripper_pt[1], (float)gripper_pt[2];
+                left_gripper = {left_pos, 0};
 
-    if (!initialized) {
-        MatrixXf X = downsampled_xyz.getMatrixXfMap().topRows(3).transpose();
+                right_pos << (float)gripper_pt[0], (float)gripper_pt[1], (float)gripper_pt[2];
+                right_gripper = {right_pos, 0};
 
-        // std::cout << "found X" << std::endl;
+                fixed_points.push_back(left_gripper);
+                fixed_points.push_back(right_gripper);
 
-        MatrixXf Y_gmm = reg(X, num_of_nodes, 0.05, 100);
-        Y_gmm = sort_pts(Y_gmm);
-
-        Y_init = Y_gmm.replicate(1, 1);
-        if (sqrt(pow(Y_gmm(0, 0)-head_node(0, 0), 2) + pow(Y_gmm(0, 1)-head_node(0, 1), 2) + pow(Y_gmm(0, 2)-head_node(0, 2), 2)) > 0.05) {
-            for (int i = 0; i < Y_gmm.rows(); i ++) {
-                Y_init.row(Y_gmm.rows()-1-i) = Y_gmm.row(i).replicate(1, 1);
+                is_grasped = {false, true};
             }
-        }
-        else {
-            Y_init = Y_gmm.replicate(1, 1);
-        }
+            else {
+                left_pos << 0.0, 0.0, 0.0;
+                left_gripper = {left_pos, 0};
 
-        // std::cout << "found Y" << std::endl;
+                right_pos << 0.0, 0.0, 0.0;
+                right_gripper = {right_pos, 0};
 
-        if (is_gripper_info && use_real_gripper) {
-            gripper_pt = {transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z};
-            last_gripper_pt = {transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z};
-        }
-        else {
-            gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
-            last_gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
-        }
+                fixed_points.push_back(left_gripper);
+                fixed_points.push_back(right_gripper);
+                
+                is_grasped = {false, false};
+            }
+            // std::cout << right_pos << std::endl;
+            bool is_interaction = false;
 
-        // auto [template_vertices_, template_edges_] = init_template_gmm(Y_gmm);
-        auto [template_vertices_, template_edges_] = init_template();
-        // auto [template_vertices_, template_edges_] = init_template_hardcoded();
-        template_vertices = template_vertices_.replicate(1, 1);
-        template_edges = template_edges_.replicate(1, 1);
-        template_cloud = Matrix3Xf2pcptr(template_vertices);
-        template_cloud_init = Matrix3Xf2pcptr(template_vertices);
+            std::cout << "finished gripper point initialization" << std::endl;
 
-        // cdcpd2 init
-        std::vector<float> cylinder_data(8);
-        std::vector<float> quat(4);
-        // Matrix3Xf init_points(3, 3);
+            CDCPD::Output out;
 
-        for (int i = 0; i < 8; i++) {
-            cylinder_data[i] = 0.1f;
-        }
+            // // ----- no pred -----
+            // out = cdcpd(rgb_image, cur_depth, pc_msg, mask, placeholder, template_cloud, false, false, false, 0, fixed_points); 
+            
+            // ----- predictions -----
+            // tip node position: -0.259614 -0.00676498     0.61341; probably the left one
+            // g_dot has type Eigen::Matrix<double, 6, 1> Vector6d; alias: smmap::AllGrippersSinglePoseDelta
+            // g_config has type EigenHelpers::VectorIsometry3d; alias: smmap::AllGrippersSinglePose
+            AllGrippersSinglePose one_frame_config;
+            AllGrippersSinglePoseDelta one_frame_velocity;
 
-        for (int i = 0; i < 4; i++) {
-            quat[i] = 1.4f;
-        }
+            for (uint32_t g = 0; g < 2; ++g)
+            {
+                Isometry3d one_config;
+                Vector6d one_velocity;
 
-        cdcpd = CDCPD(template_cloud,
-                    template_edges,
-                    false,
-                    alpha,
-                    beta,
-                    lambda,
-                    k_spring,
-                    zeta,
-                    cylinder_data,
-                    is_sim);
-        cdcpd.kvis = 0;
-        // end of cdcpd2 init
+                // for (uint32_t row = 0; row < 4; ++row)
+                // {
+                //     for (uint32_t col = 0; col < 4; ++col)
+                //     {
+                //         one_config(row, col) = double(((g_config->data).data)[num_config*g + row*4 + col]);
+                //     }
+                // }
 
-        // Eigen::Matrix3f intrinsics_eigen(3, 3);
-        // intrinsics_eigen << 918.359130859375, 0.0, 645.8908081054688,
-        //                     0.0, 916.265869140625, 354.02392578125,
-        //                     0.0, 0.0, 1.0;
-        // intrinsics_eigen.cast<float>();
+                std::cout << "in for loop" << std::endl;
 
-        // for (int i = 0; i < 10; i ++) {
-        //     std::cout << "running initializaiton cpd" << std::endl;
-        //     cdcpd.cpd(X, template_vertices, Y_init.transpose(), depth_image, mask, intrinsics_eigen);
-        // }
-        
-        // template_cloud = Matrix3Xf2pcptr(template_vertices);
+                if (!use_real_gripper || !is_gripper_info) {
+                    std::cout << "before modifying one_config" << std::endl;
+                    one_config(0, 0) = 1.0;
+                    one_config(0, 1) = 0.0;
+                    one_config(0, 2) = 0.0;
 
-        initialized = true;
-    }
+                    one_config(1, 0) = 0.0;
+                    one_config(1, 1) = 1.0;
+                    one_config(1, 2) = 0.0;
 
-    // ========================================================================
-    cv::Matx33d placeholder;
-    std::vector<CDCPD::FixedPoint> fixed_points;
-
-    if (is_gripper_info && use_real_gripper) {
-        gripper_pt = {transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z};
-    }
-    else {
-        gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
-    }
-
-    // hard coded
-    if (bag_file == 1 && time_from_start < 4) {
-        gripper_pt = {head_node(0, 0), head_node(0, 1), head_node(0, 2)};
-    }
-    if (bag_file == 2 && time_from_start < 5) {
-        gripper_pt = {transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z};
-    }
-    else if (bag_file == 1 && time_from_start >= 4 && is_gripper_info && !reversed_Y) {
-        std::vector<pcl::PointXYZ> temp_vec = {};
-        for (int i = 0; i < num_of_nodes; i ++) {
-            // pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-            temp_vec.push_back((*template_cloud)[i]);
-        }
-        for (int i = 0; i < num_of_nodes; i ++) {
-            (*template_cloud)[i] = temp_vec[num_of_nodes-1-i];
-        }
-        reversed_Y = true;
-        ROS_ERROR_STREAM("reversed Y");
-    }
-    
-    Eigen::Vector3f left_pos((float)gripper_pt[0], (float)gripper_pt[1], (float)gripper_pt[2]);
-    CDCPD::FixedPoint left_gripper = {left_pos, 0};
-
-    Eigen::Vector3f right_pos((float)gripper_pt[0], (float)gripper_pt[1], (float)gripper_pt[2]);
-
-    // std:cout << "before right pose" << std::endl;
-    // std::cout << Y_init(Y_init.rows()-1, 0) << "; " << Y_init(Y_init.rows()-1, 1) << "; " << Y_init(Y_init.rows()-1, 2) << std::endl;
-    // Eigen::Vector3f right_pos(Y_init(Y_init.rows()-1, 0), Y_init(Y_init.rows()-1, 1), Y_init(Y_init.rows()-1, 2));
-    // CDCPD::FixedPoint right_gripper = {right_pos, Y_init.rows()-1};
-
-    CDCPD::FixedPoint right_gripper = {right_pos, 0};
-
-    fixed_points.push_back(left_gripper);
-    fixed_points.push_back(right_gripper);
-
-    // std::cout << right_pos << std::endl;
-
-    std::vector<bool> is_grasped = {false, true};
-    // std::vector<bool> is_grasped = {true, true};
-
-    // need gripper pos for initialization; wait 10 seconds
-    // time_from_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count() / 1000.0;
-    if (bag_file == 0) {
-        cutoff_time = 8.0;
-    }
-    else if (bag_file == 1) {
-        cutoff_time = 4.0;
-    }
-    else {
-        cutoff_time = 5.0;
-    }
-    if (!is_gripper_info && time_from_start > cutoff_time) {
-        is_grasped = {false, false};
-        cdcpd.kvis = 1e3;
-    }
-    bool is_interaction = false;
-
-    CDCPD::Output out;
-
-    // // ----- no pred -----
-    // out = cdcpd(rgb_image, depth_image, pc_msg, mask, placeholder, template_cloud, false, false, false, 0, fixed_points); 
-    
-    // ----- predictions -----
-    // tip node position: -0.259614 -0.00676498     0.61341; probably the left one
-    // g_dot has type Eigen::Matrix<double, 6, 1> Vector6d; alias: smmap::AllGrippersSinglePoseDelta
-    // g_config has type EigenHelpers::VectorIsometry3d; alias: smmap::AllGrippersSinglePose
-    AllGrippersSinglePose one_frame_config;
-    AllGrippersSinglePoseDelta one_frame_velocity;
-
-    for (uint32_t g = 0; g < 2; ++g)
-    {
-        Isometry3d one_config;
-        Vector6d one_velocity;
-
-        // for (uint32_t row = 0; row < 4; ++row)
-        // {
-        //     for (uint32_t col = 0; col < 4; ++col)
-        //     {
-        //         one_config(row, col) = double(((g_config->data).data)[num_config*g + row*4 + col]);
-        //     }
-        // }
-
-        if (!use_real_gripper) {
-            one_config(0, 0) = 1.0;
-            one_config(0, 1) = 0.0;
-            one_config(0, 2) = 0.0;
-
-            one_config(1, 0) = 0.0;
-            one_config(1, 1) = 1.0;
-            one_config(1, 2) = 0.0;
-
-            one_config(2, 0) = 0.0;
-            one_config(2, 1) = 0.0;
-            one_config(2, 2) = 1.0;
-        }
-        else {
-            Eigen::Quaterniond q;
-            q.w() = transformStamped.transform.rotation.w;
-            q.x() = transformStamped.transform.rotation.x;
-            q.y() = transformStamped.transform.rotation.y;
-            q.z() = transformStamped.transform.rotation.z;
-
-            auto R = q.normalized().toRotationMatrix();
-
-            one_config(0, 0) = R(0, 0);
-            one_config(0, 1) = R(0, 1);
-            one_config(0, 2) = R(0, 2);
-
-            one_config(1, 0) = R(1, 0);
-            one_config(1, 1) = R(1, 1);
-            one_config(1, 2) = R(1, 2);
-
-            one_config(2, 0) = R(2, 0);
-            one_config(2, 1) = R(2, 1);
-            one_config(2, 2) = R(2, 2);
-        }
-
-        one_config(3, 0) = 0.0;
-        one_config(3, 1) = 0.0;
-        one_config(3, 2) = 0.0;
-        one_config(3, 3) = 1.0;
-
-        one_config(0, 3) = gripper_pt[0];
-        one_config(1, 3) = gripper_pt[1];
-        one_config(2, 3) = gripper_pt[2];
-        // if (g == 1) {
-        //     one_config(0, 3) = gripper_pt[0];
-        //     one_config(1, 3) = gripper_pt[1];
-        //     one_config(2, 3) = gripper_pt[2];
-        // }
-        // else {
-        //     one_config(0, 3) = Y_init(Y_init.rows()-1, 0);
-        //     one_config(1, 3) = Y_init(Y_init.rows()-1, 1);
-        //     one_config(2, 3) = Y_init(Y_init.rows()-1, 2);
-        // }
-
-        // log time
-        double gripper_time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - gripper_time).count();
-
-        for (uint32_t i = 0; i < 6; ++i) {
-            if (is_gripper_info) {
-                if (i < 3) {
-                    one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]); // / (gripper_time_diff / 1000.0);
-                    if (one_velocity(i) < 1e-4) {
-                        one_velocity(i) = 0;
-                    }
-                    // else {
-                    //     one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0);
-                    // }
-                    
-                    // std::cout << gripper_time_diff/1000.0 << std::endl;
-                    // std::cout << "vel = " << gripper_pt[i] - last_gripper_pt[i] << std::endl;
-                    // std::cout << "scaled vel = " << (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0) << std::endl;
+                    one_config(2, 0) = 0.0;
+                    one_config(2, 1) = 0.0;
+                    one_config(2, 2) = 1.0;
                 }
                 else {
-                    one_velocity(i) = 0;
+                    Eigen::Quaterniond q;
+                    q.w() = gripper_tf.transform.rotation.w;
+                    q.x() = gripper_tf.transform.rotation.x;
+                    q.y() = gripper_tf.transform.rotation.y;
+                    q.z() = gripper_tf.transform.rotation.z;
+
+                    auto R = q.normalized().toRotationMatrix();
+
+                    one_config(0, 0) = R(0, 0);
+                    one_config(0, 1) = R(0, 1);
+                    one_config(0, 2) = R(0, 2);
+
+                    one_config(1, 0) = R(1, 0);
+                    one_config(1, 1) = R(1, 1);
+                    one_config(1, 2) = R(1, 2);
+
+                    one_config(2, 0) = R(2, 0);
+                    one_config(2, 1) = R(2, 1);
+                    one_config(2, 2) = R(2, 2);
                 }
+
+                one_config(3, 0) = 0.0;
+                one_config(3, 1) = 0.0;
+                one_config(3, 2) = 0.0;
+                one_config(3, 3) = 1.0;
+
+                one_config(0, 3) = gripper_pt[0];
+                one_config(1, 3) = gripper_pt[1];
+                one_config(2, 3) = gripper_pt[2];
+                // if (g == 1) {
+                //     one_config(0, 3) = gripper_pt[0];
+                //     one_config(1, 3) = gripper_pt[1];
+                //     one_config(2, 3) = gripper_pt[2];
+                // }
+                // else {
+                //     one_config(0, 3) = Y_init(Y_init.rows()-1, 0);
+                //     one_config(1, 3) = Y_init(Y_init.rows()-1, 1);
+                //     one_config(2, 3) = Y_init(Y_init.rows()-1, 2);
+                // }
+
+                std::cout << "finished first for loop" << std::endl;
+
+                // log time
+                double gripper_time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - gripper_time).count();
+
+                for (uint32_t i = 0; i < 6; ++i) {
+                    if (is_gripper_info) {
+                        if (i < 3) {
+                            one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]); // / (gripper_time_diff / 1000.0);
+                            if (one_velocity(i) < 1e-4) {
+                                one_velocity(i) = 0;
+                            }
+                            // else {
+                            //     one_velocity(i) = (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0);
+                            // }
+                            
+                            // std::cout << gripper_time_diff/1000.0 << std::endl;
+                            // std::cout << "vel = " << gripper_pt[i] - last_gripper_pt[i] << std::endl;
+                            // std::cout << "scaled vel = " << (gripper_pt[i] - last_gripper_pt[i]) / (gripper_time_diff / 1000.0) << std::endl;
+                        }
+                        else {
+                            one_velocity(i) = 0;
+                        }
+                    }
+                    else {
+                        one_velocity(i) = 0;
+                    }
+                }
+
+                std::cout << "one_velocity: " << one_velocity << std::endl;
+
+                one_frame_config.push_back(one_config);
+                one_frame_velocity.push_back(one_velocity);
+            }
+
+            // update gripper point location
+            for (int i = 0; i < gripper_pt.size(); i ++) {
+                last_gripper_pt[i] = gripper_pt[i];
+            }
+
+            // log time
+            gripper_time = std::chrono::steady_clock::now();
+
+            // log time
+            std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+
+            std::cout << "before registration" << std::endl;
+
+            if (is_gripper_info) {
+                // pred_choice:
+                // 	- 0: no movement
+                // 	- 1: Dmitry's prediction
+                //  - 2: Mengyao's prediction
+
+                // // ----- pred 0 -----
+                // out = cdcpd(rgb_image, cur_depth, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
+
+                // // ----- pred 1 -----
+                // out = cdcpd(rgb_image, cur_depth, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 1, fixed_points);
+
+                // ----- pred 2 -----
+                out = cdcpd(cur_image_orig, cur_depth, cur_pc_downsampled, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
             }
             else {
-                one_velocity(i) = 0;
+                // out = cdcpd(rgb_image, cur_depth, cur_pc_downsampled, mask, placeholder, template_cloud, false, false, false, 0, fixed_points);
+                // std::cout << "pred 0" << std::endl;
+                out = cdcpd(cur_image_orig, cur_depth, cur_pc_downsampled, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
             }
+
+            
+            template_cloud = out.gurobi_output;
+
+            // convert to MatrixXf
+            MatrixXf Y = MatrixXf::Zero(num_of_nodes, 3);
+            for (int i = 0; i < num_of_nodes; i ++) {
+                Y(i, 0) = template_cloud->points[i].x;
+                Y(i, 1) = template_cloud->points[i].y;
+                Y(i, 2) = template_cloud->points[i].z;
+            }
+
+            MatrixXf X = cur_pc_downsampled.getMatrixXfMap().topRows(3).transpose();
+            ROS_INFO_STREAM("Number of points in downsampled point cloud: " + std::to_string(X.rows()));
+
+            // calculate node visibility
+            // for each node in Y, determine a point in X closest to it
+            std::vector<int> visible_nodes = {};
+            for (int m = 0; m < Y.rows(); m ++) {
+                double shortest_dist = 100000;
+                // loop through all points in X
+                for (int n = 0; n < X.rows(); n ++) {
+                    double dist = (Y.row(m) - X.row(n)).norm();
+                    if (dist < shortest_dist) {
+                        shortest_dist = dist;
+                    }
+                }
+                if (shortest_dist <= visibility_threshold) {
+                    visible_nodes.push_back(m);
+                }
+            }
+
+            // // print out results
+            // std::cout << "=====" << std::endl;
+            // for (int i = 0; i < Y.rows(); i ++) {
+            //     std::cout << Y(i, 0) << ", " << Y(i, 1) << ", " << Y(i, 2) << "," << std::endl;
+            // }
+            // std::cout << "=====" << std::endl;
+
+            // projection and pub image
+            MatrixXf nodes_h = Y.replicate(1, 1);
+            nodes_h.conservativeResize(nodes_h.rows(), nodes_h.cols()+1);
+            nodes_h.col(nodes_h.cols()-1) = MatrixXf::Ones(nodes_h.rows(), 1);
+            MatrixXf image_coords = (proj_matrix * nodes_h.transpose()).transpose();
+
+            Mat tracking_img;
+            tracking_img = 0.5*cur_image_orig + 0.5*cur_image;
+
+            // draw points
+            for (int i = 0; i < image_coords.rows(); i ++) {
+
+                int x = static_cast<int>(image_coords(i, 0)/image_coords(i, 2));
+                int y = static_cast<int>(image_coords(i, 1)/image_coords(i, 2));
+
+                cv::Scalar point_color;
+                cv::Scalar line_color;
+
+                if (std::find(visible_nodes.begin(), visible_nodes.end(), i) != visible_nodes.end()) {
+                    point_color = cv::Scalar(0, 150, 255);
+                    line_color = cv::Scalar(0, 255, 0);
+                }
+                else {
+                    point_color = cv::Scalar(0, 0, 255);
+                    line_color = cv::Scalar(0, 0, 255);
+                }
+
+                if (i != image_coords.rows()-1) {
+                    cv::line(tracking_img, cv::Point(x, y),
+                                        cv::Point(static_cast<int>(image_coords(i+1, 0)/image_coords(i+1, 2)), 
+                                                    static_cast<int>(image_coords(i+1, 1)/image_coords(i+1, 2))),
+                                        line_color, 5);
+                }
+
+                cv::circle(tracking_img, cv::Point(x, y), 7, point_color, -1);
+            }
+
+            // add text
+            if (updated_opencv_mask && simulated_occlusion) {
+                cv::putText(tracking_img, "occlusion", cv::Point(occlusion_corner_j, occlusion_corner_i-10), cv::FONT_HERSHEY_DUPLEX, 1.2, cv::Scalar(0, 0, 240), 2);
+            }
+
+            // publish image
+            tracking_img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", tracking_img).toImageMsg();
+
+            // publish marker array
+            visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
+            results_pub.publish(results);
+
+            double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time_cb).count();
+            ROS_WARN_STREAM("Total callback time difference: " + std::to_string(time_diff) + " ms");
+
+            // change frame id
+            out.gurobi_output->header.frame_id = frame_id;
+            out.original_cloud.header.frame_id = frame_id;
+            out.masked_point_cloud.header.frame_id = frame_id;
+            out.downsampled_cloud.header.frame_id = frame_id;
+            out.cpd_predict->header.frame_id = frame_id;
+
+            auto time = depth_msg->header.stamp;
+            pcl_conversions::toPCL(time, out.original_cloud.header.stamp);
+            pcl_conversions::toPCL(time, out.masked_point_cloud.header.stamp);
+            pcl_conversions::toPCL(time, out.downsampled_cloud.header.stamp);
+            pcl_conversions::toPCL(time, out.gurobi_output->header.stamp);
+            // pcl_conversions::toPCL(time, template_cloud_init->header.stamp);
+            pcl_conversions::toPCL(time, out.cpd_predict->header.stamp);
+
+            // for synchronized evaluation
+            pcl::PCLPointCloud2 result_pc_pclpoincloud2;
+            sensor_msgs::PointCloud2 result_pc;
+            pcl::toPCLPointCloud2(*(out.gurobi_output), result_pc_pclpoincloud2);
+            pcl_conversions::moveFromPCL(result_pc_pclpoincloud2, result_pc);
+            result_pc.header = depth_msg->header;
+
+            original_publisher.publish(out.original_cloud);
+            masked_publisher.publish(out.masked_point_cloud);
+            downsampled_publisher.publish(out.downsampled_cloud);
+            pred_publisher.publish(out.cpd_predict);
+            output_publisher.publish(result_pc);
         }
-
-        std::cout << "one_velocity: " << one_velocity << std::endl;
-
-        one_frame_config.push_back(one_config);
-        one_frame_velocity.push_back(one_velocity);
     }
 
-    // update gripper point location
-    for (int i = 0; i < gripper_pt.size(); i ++) {
-        last_gripper_pt[i] = gripper_pt[i];
-    }
-
-    // log time
-    gripper_time = std::chrono::steady_clock::now();
-
-    // log time
-    std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
-
-    if (is_gripper_info) {
-        // pred_choice:
-        // 	- 0: no movement
-        // 	- 1: Dmitry's prediction
-        //  - 2: Mengyao's prediction
-
-        // // ----- pred 0 -----
-        // out = cdcpd(rgb_image, depth_image, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
-
-        // // ----- pred 1 -----
-        // out = cdcpd(rgb_image, depth_image, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 1, fixed_points);
-
-        // ----- pred 2 -----
-        out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
-    }
-    else {
-        // out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, false, false, false, 0, fixed_points);
-        // std::cout << "pred 0" << std::endl;
-        out = cdcpd(rgb_image, depth_image, downsampled_xyz, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
-    }
-
-    
-    template_cloud = out.gurobi_output;
-
-    // convert to MatrixXf
-    MatrixXf Y = MatrixXf::Zero(num_of_nodes, 3);
-    for (int i = 0; i < num_of_nodes; i ++) {
-        Y(i, 0) = template_cloud->points[i].x;
-        Y(i, 1) = template_cloud->points[i].y;
-        Y(i, 2) = template_cloud->points[i].z;
-    }
-
-    // // print out results
-    // std::cout << "=====" << std::endl;
-    // for (int i = 0; i < Y.rows(); i ++) {
-    //     std::cout << Y(i, 0) << ", " << Y(i, 1) << ", " << Y(i, 2) << "," << std::endl;
-    // }
-    // std::cout << "=====" << std::endl;
-
-    // publish marker array
-    visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(head_node, Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
-    results_pub.publish(results);
-
-    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time_cb).count();
-    ROS_WARN_STREAM("Total callback time difference: " + std::to_string(time_diff) + " ms");
-
-    // change frame id
-    out.gurobi_output->header.frame_id = frame_id;
-    out.original_cloud.header.frame_id = frame_id;
-    out.masked_point_cloud.header.frame_id = frame_id;
-    out.downsampled_cloud.header.frame_id = frame_id;
-    out.cpd_predict->header.frame_id = frame_id;
-
-    auto time = pc_msg->header.stamp;
-    pcl_conversions::toPCL(time, out.original_cloud.header.stamp);
-    pcl_conversions::toPCL(time, out.masked_point_cloud.header.stamp);
-    pcl_conversions::toPCL(time, out.downsampled_cloud.header.stamp);
-    pcl_conversions::toPCL(time, out.gurobi_output->header.stamp);
-    // pcl_conversions::toPCL(time, template_cloud_init->header.stamp);
-    pcl_conversions::toPCL(time, out.cpd_predict->header.stamp);
-
-    // for synchronized evaluation
-    pcl::PCLPointCloud2 result_pc_pclpoincloud2;
-    sensor_msgs::PointCloud2 result_pc;
-    pcl::toPCLPointCloud2(*(out.gurobi_output), result_pc_pclpoincloud2);
-    pcl_conversions::moveFromPCL(result_pc_pclpoincloud2, result_pc);
-    result_pc.header = pc_msg->header;
-
-    original_publisher.publish(out.original_cloud);
-    masked_publisher.publish(out.masked_point_cloud);
-    downsampled_publisher.publish(out.downsampled_cloud);
-    pred_publisher.publish(out.cpd_predict);
-    output_publisher.publish(result_pc);
-
-    return mask_msg;
+    return tracking_img_msg;
 }
 
 int main(int argc, char **argv) {
@@ -1040,14 +1023,13 @@ int main(int argc, char **argv) {
 
     // load parameters
     nh.getParam("/cdcpd2/num_of_nodes", num_of_nodes);
-    nh.getParam("/cdcpd2/use_eval_rope", use_eval_rope);
     nh.getParam("/cdcpd2/is_gripper_info", is_gripper_info);
     nh.getParam("/cdcpd2/use_real_gripper", use_real_gripper);
     nh.getParam("/cdcpd2/alpha", alpha);
     nh.getParam("/cdcpd2/beta", beta);
     nh.getParam("/cdcpd2/lambda", lambda);
     nh.getParam("/cdcpd2/zeta", zeta);
-    nh.getParam("/cdcpd2/leaf_size", leaf_size);
+    nh.getParam("/cdcpd2/downsample_leaf_size", downsample_leaf_size);
     nh.getParam("/cdcpd2/k_spring", k_spring);
     nh.getParam("/cdcpd2/is_sim", is_sim);
     nh.getParam("/cdcpd2/is_rope", is_rope);
@@ -1063,12 +1045,57 @@ int main(int argc, char **argv) {
     nh.getParam("/cdcpd2/bag_file", bag_file);
     nh.getParam("/cdcpd2/bag_rate", bag_rate);
 
+    nh.getParam("/cdcpd2/multi_color_dlo", multi_color_dlo);
+
+    nh.getParam("/cdcpd2/camera_info_topic", camera_info_topic);
+    nh.getParam("/cdcpd2/rgb_topic", rgb_topic);
+    nh.getParam("/cdcpd2/depth_topic", depth_topic);
+
+    nh.getParam("/cdcpd2/hsv_threshold_upper_limit", hsv_threshold_upper_limit);
+    nh.getParam("/cdcpd2/hsv_threshold_lower_limit", hsv_threshold_lower_limit);
+    nh.getParam("/cdcpd2/visibility_threshold", visibility_threshold);
+
+    // update color thresholding upper bound
+    std::string rgb_val = "";
+    for (int i = 0; i < hsv_threshold_upper_limit.length(); i ++) {
+        if (hsv_threshold_upper_limit.substr(i, 1) != " ") {
+            rgb_val += hsv_threshold_upper_limit.substr(i, 1);
+        }
+        else {
+            upper.push_back(std::stoi(rgb_val));
+            rgb_val = "";
+        }
+        
+        if (i == hsv_threshold_upper_limit.length()-1) {
+            upper.push_back(std::stoi(rgb_val));
+        }
+    }
+
+    // update color thresholding lower bound
+    rgb_val = "";
+    for (int i = 0; i < hsv_threshold_lower_limit.length(); i ++) {
+        if (hsv_threshold_lower_limit.substr(i, 1) != " ") {
+            rgb_val += hsv_threshold_lower_limit.substr(i, 1);
+        }
+        else {
+            lower.push_back(std::stoi(rgb_val));
+            rgb_val = "";
+        }
+        
+        if (i == hsv_threshold_lower_limit.length()-1) {
+            upper.push_back(std::stoi(rgb_val));
+        }
+    }
+
+    std::cout << "before callback" << std::endl;
+
     nh_ptr = std::make_shared<ros::NodeHandle>(nh);
 
     image_transport::ImageTransport it(nh);
     image_transport::Subscriber opencv_mask_sub = it.subscribe("/mask_with_occlusion", 10, update_opencv_mask);
-    image_transport::Publisher mask_pub = it.advertise("/mask", 10);
+    image_transport::Publisher tracking_img_pub = it.advertise("/cdcpd2/results_img", 10);
     results_pub = nh.advertise<visualization_msgs::MarkerArray>("/results_marker", 1);
+    camera_info_sub = nh.subscribe(camera_info_topic, 1, update_camera_info);
 
     original_publisher = nh.advertise<PointCloud> ("cdcpd/original", 1);
     masked_publisher = nh.advertise<PointCloud> ("cdcpd/masked", 1);
@@ -1084,15 +1111,15 @@ int main(int argc, char **argv) {
 
     tf2_ros::TransformListener tfListener(tfBuffer);
 
-    message_filters::Subscriber<sensor_msgs::Image> image_sub(nh, "/camera/color/image_raw", 10);
-    message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh, "/camera/depth/image_rect_raw", 10);
-    message_filters::Subscriber<sensor_msgs::PointCloud2> pc_sub(nh, "/camera/depth/color/points", 10);
+    message_filters::Subscriber<sensor_msgs::Image> image_sub(nh, rgb_topic, 10);
+    message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh, depth_topic, 10);
+    // message_filters::Subscriber<sensor_msgs::PointCloud2> pc_sub(nh, "/camera/depth/color/points", 10);
     // message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::PointCloud2> sync(image_sub, depth_sub, pc_sub, 10);
 
-    message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::PointCloud2> sync(image_sub, pc_sub, 10);
+    message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::Image> sync(image_sub, depth_sub, 10);
 
     sync.registerCallback<std::function<void(const sensor_msgs::ImageConstPtr&, 
-                                             const sensor_msgs::PointCloud2ConstPtr&,
+                                             const sensor_msgs::ImageConstPtr&,
                                              const boost::shared_ptr<const message_filters::NullType>,
                                              const boost::shared_ptr<const message_filters::NullType>,
                                              const boost::shared_ptr<const message_filters::NullType>,
@@ -1102,7 +1129,7 @@ int main(int argc, char **argv) {
                                              const boost::shared_ptr<const message_filters::NullType>)>>
     (
         [&](const sensor_msgs::ImageConstPtr& img_msg, 
-            const sensor_msgs::PointCloud2ConstPtr& pc_msg,
+            const sensor_msgs::ImageConstPtr& depth_msg,
             const boost::shared_ptr<const message_filters::NullType> var1,
             const boost::shared_ptr<const message_filters::NullType> var2,
             const boost::shared_ptr<const message_filters::NullType> var3,
@@ -1113,9 +1140,9 @@ int main(int argc, char **argv) {
         {
             // sensor_msgs::ImagePtr test_image = imageCallback(msg, _);
             // mask_pub.publish(test_image);
-            // sensor_msgs::ImagePtr mask_img = Callback(img_msg, depth_msg, pc_msg); // sensor_msgs::ImagePtr tracking_img = 
-            sensor_msgs::ImagePtr mask_img = Callback(img_msg, pc_msg);
-            mask_pub.publish(mask_img);
+            // sensor_msgs::ImagePtr tracking_img = Callback(img_msg, depth_msg, pc_msg); // sensor_msgs::ImagePtr tracking_img = 
+            sensor_msgs::ImagePtr tracking_img = Callback(img_msg, depth_msg);
+            tracking_img_pub.publish(tracking_img);
         }
     );
     
