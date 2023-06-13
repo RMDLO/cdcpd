@@ -787,4 +787,3 @@ bool Optimizer::all_constraints_satisfiable(const std::vector<CDCPD::FixedPoint>
 }
 
 
-

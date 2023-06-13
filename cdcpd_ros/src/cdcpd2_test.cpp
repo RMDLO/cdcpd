@@ -139,6 +139,8 @@ std::vector<int> upper;
 std::vector<int> lower;
 double visibility_threshold;
 
+int dlo_pixel_width;
+
 // ---------- END OF CONFIG -----------
 
 template <typename T>
@@ -310,10 +312,20 @@ void update_camera_info (const sensor_msgs::CameraInfoConstPtr& cam_msg) {
 }
 
 // node color and object color are in rgba format and range from 0-1
-visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf Y, std::string marker_frame, std::string marker_ns, std::vector<float> node_color, std::vector<float> line_color) {
-    // publish the results as a marker array
+visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf Y,
+                                                      std::string marker_frame, 
+                                                      std::string marker_ns, 
+                                                      std::vector<float> node_color, 
+                                                      std::vector<float> line_color, 
+                                                      double node_scale,
+                                                      double line_scale,
+                                                      std::vector<int> visible_nodes, 
+                                                      std::vector<float> occluded_node_color,
+                                                      std::vector<float> occluded_line_color) {    // publish the results as a marker array
+    
     visualization_msgs::MarkerArray results = visualization_msgs::MarkerArray();
-
+    
+    bool last_node_visible = true;
     for (int i = 0; i < Y.rows(); i ++) {
         visualization_msgs::Marker cur_node_result = visualization_msgs::Marker();
     
@@ -337,21 +349,32 @@ visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf Y, std::string ma
         cur_node_result.pose.orientation.z = 0.0;
 
         // set scale
-        cur_node_result.scale.x = 0.01;
-        cur_node_result.scale.y = 0.01;
-        cur_node_result.scale.z = 0.01;
+        cur_node_result.scale.x = node_scale;
+        cur_node_result.scale.y = node_scale;
+        cur_node_result.scale.z = node_scale;
 
         // set color
-        cur_node_result.color.r = node_color[0];
-        cur_node_result.color.g = node_color[1];
-        cur_node_result.color.b = node_color[2];
-        cur_node_result.color.a = node_color[3];
+        bool cur_node_visible;
+        if (visible_nodes.size() != 0 && std::find(visible_nodes.begin(), visible_nodes.end(), i) == visible_nodes.end()) {
+            cur_node_result.color.r = occluded_node_color[0];
+            cur_node_result.color.g = occluded_node_color[1];
+            cur_node_result.color.b = occluded_node_color[2];
+            cur_node_result.color.a = occluded_node_color[3];
+            cur_node_visible = false;
+        }
+        else {
+            cur_node_result.color.r = node_color[0];
+            cur_node_result.color.g = node_color[1];
+            cur_node_result.color.b = node_color[2];
+            cur_node_result.color.a = node_color[3];
+            cur_node_visible = true;
+        }
 
         results.markers.push_back(cur_node_result);
 
-        // don't add line if at the last node
-        if (i == Y.rows()-1) {
-            break;
+        // don't add line if at the first node
+        if (i == 0) {
+            continue;
         }
 
         visualization_msgs::Marker cur_line_result = visualization_msgs::Marker();
@@ -364,14 +387,14 @@ visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf Y, std::string ma
         cur_line_result.id = i;
 
         // add position
-        cur_line_result.pose.position.x = (Y(i, 0) + Y(i+1, 0)) / 2.0;
-        cur_line_result.pose.position.y = (Y(i, 1) + Y(i+1, 1)) / 2.0;
-        cur_line_result.pose.position.z = (Y(i, 2) + Y(i+1, 2)) / 2.0;
+        cur_line_result.pose.position.x = (Y(i, 0) + Y(i-1, 0)) / 2.0;
+        cur_line_result.pose.position.y = (Y(i, 1) + Y(i-1, 1)) / 2.0;
+        cur_line_result.pose.position.z = (Y(i, 2) + Y(i-1, 2)) / 2.0;
 
         // add orientation
         Eigen::Quaternionf q;
         Eigen::Vector3f vec1(0.0, 0.0, 1.0);
-        Eigen::Vector3f vec2(Y(i+1, 0) - Y(i, 0), Y(i+1, 1) - Y(i, 1), Y(i+1, 2) - Y(i, 2));
+        Eigen::Vector3f vec2(Y(i, 0) - Y(i-1, 0), Y(i, 1) - Y(i-1, 1), Y(i, 2) - Y(i-1, 2));
         q.setFromTwoVectors(vec1, vec2);
 
         cur_line_result.pose.orientation.w = q.w();
@@ -380,15 +403,23 @@ visualization_msgs::MarkerArray MatrixXf2MarkerArray (MatrixXf Y, std::string ma
         cur_line_result.pose.orientation.z = q.z();
 
         // set scale
-        cur_line_result.scale.x = 0.005;
-        cur_line_result.scale.y = 0.005;
-        cur_line_result.scale.z = pt2pt_dis(Y.row(i), Y.row(i+1));
+        cur_line_result.scale.x = line_scale;
+        cur_line_result.scale.y = line_scale;
+        cur_line_result.scale.z = pt2pt_dis(Y.row(i), Y.row(i-1));
 
         // set color
-        cur_line_result.color.r = line_color[0];
-        cur_line_result.color.g = line_color[1];
-        cur_line_result.color.b = line_color[2];
-        cur_line_result.color.a = line_color[3];
+        if (last_node_visible && cur_node_visible) {
+            cur_line_result.color.r = line_color[0];
+            cur_line_result.color.g = line_color[1];
+            cur_line_result.color.b = line_color[2];
+            cur_line_result.color.a = line_color[3];
+        }
+        else {
+            cur_line_result.color.r = occluded_line_color[0];
+            cur_line_result.color.g = occluded_line_color[1];
+            cur_line_result.color.b = occluded_line_color[2];
+            cur_line_result.color.a = occluded_line_color[3];
+        }
 
         results.markers.push_back(cur_line_result);
     }
@@ -683,7 +714,6 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
                         zeta,
                         cylinder_data,
                         is_sim);
-            cdcpd.kvis = 100;
             // end of cdcpd2 init
 
             // Eigen::Matrix3f intrinsics_eigen(3, 3);
@@ -886,12 +916,12 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
                 // out = cdcpd(rgb_image, cur_depth, pc_msg, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 1, fixed_points);
 
                 // ----- pred 2 -----
-                out = cdcpd(cur_image_orig, cur_depth, cur_pc_downsampled, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
+                out = cdcpd(cur_image_orig, cur_depth, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 2, fixed_points);
             }
             else {
                 // out = cdcpd(rgb_image, cur_depth, cur_pc_downsampled, mask, placeholder, template_cloud, false, false, false, 0, fixed_points);
                 // std::cout << "pred 0" << std::endl;
-                out = cdcpd(cur_image_orig, cur_depth, cur_pc_downsampled, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
+                out = cdcpd(cur_image_orig, cur_depth, mask, placeholder, template_cloud, one_frame_velocity, one_frame_config, is_grasped, nh_ptr, translation_dir_deformability, translation_dis_deformability, rotation_deformability, true, is_interaction, true, 0, fixed_points);
             }
 
             
@@ -910,20 +940,74 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
             // calculate node visibility
             // for each node in Y, determine a point in X closest to it
-            std::vector<int> visible_nodes = {};
+            std::map<int, double> shortest_node_pt_dists;
             for (int m = 0; m < Y.rows(); m ++) {
+                int closest_pt_idx = 0;
                 double shortest_dist = 100000;
                 // loop through all points in X
                 for (int n = 0; n < X.rows(); n ++) {
                     double dist = (Y.row(m) - X.row(n)).norm();
                     if (dist < shortest_dist) {
+                        closest_pt_idx = n;
                         shortest_dist = dist;
                     }
                 }
-                if (shortest_dist <= visibility_threshold) {
-                    visible_nodes.push_back(m);
-                }
+                shortest_node_pt_dists.insert(std::pair<int, double>(m, shortest_dist));
             }
+
+            // for current nodes and edges in Y, sort them based on how far away they are from the camera
+            std::vector<double> averaged_node_camera_dists = {};
+            std::vector<int> indices_vec = {};
+            for (int i = 0; i < Y.rows()-1; i ++) {
+                averaged_node_camera_dists.push_back(((Y.row(i) + Y.row(i+1)) / 2).norm());
+                indices_vec.push_back(i);
+            }
+            // sort
+            std::sort(indices_vec.begin(), indices_vec.end(),
+                [&](const int& a, const int& b) {
+                    return (averaged_node_camera_dists[a] < averaged_node_camera_dists[b]);
+                }
+            );
+            Mat projected_edges = Mat::zeros(mask.rows, mask.cols, CV_8U);
+
+            // project Y^{t-1} onto projected_edges
+            MatrixXf Y_h = Y.replicate(1, 1);
+            Y_h.conservativeResize(Y_h.rows(), Y_h.cols()+1);
+            Y_h.col(Y_h.cols()-1) = MatrixXf::Ones(Y_h.rows(), 1);
+            MatrixXf image_coords_mask = (proj_matrix * Y_h.transpose()).transpose();
+
+            std::vector<int> visible_nodes = {};
+            // draw edges closest to the camera first
+            for (int idx : indices_vec) {
+                int col_1 = static_cast<int>(image_coords_mask(idx, 0)/image_coords_mask(idx, 2));
+                int row_1 = static_cast<int>(image_coords_mask(idx, 1)/image_coords_mask(idx, 2));
+
+                int col_2 = static_cast<int>(image_coords_mask(idx+1, 0)/image_coords_mask(idx+1, 2));
+                int row_2 = static_cast<int>(image_coords_mask(idx+1, 1)/image_coords_mask(idx+1, 2));
+
+                // only add to visible nodes if did not overlap with existing edges
+                if (shortest_node_pt_dists[idx] <= visibility_threshold) {
+                    if (projected_edges.at<uchar>(row_1, col_1) == 0) {
+                        if (std::find(visible_nodes.begin(), visible_nodes.end(), idx) == visible_nodes.end()) {
+                            visible_nodes.push_back(idx);
+                        }
+                    }
+                }
+                // do not consider adjacent nodes directly on top of each other
+                if (shortest_node_pt_dists[idx+1] <= visibility_threshold) {
+                    if (projected_edges.at<uchar>(row_2, col_2) == 0) {
+                        if (std::find(visible_nodes.begin(), visible_nodes.end(), idx+1) == visible_nodes.end()) {
+                            visible_nodes.push_back(idx+1);
+                        }
+                    }
+                }
+
+                // add edges for checking overlap with upcoming nodes
+                cv::line(projected_edges, cv::Point(col_1, row_1), cv::Point(col_2, row_2), cv::Scalar(255, 255, 255), dlo_pixel_width);
+            }
+
+            // sort visible nodes to preserve the original connectivity
+            std::sort(visible_nodes.begin(), visible_nodes.end());
 
             // // print out results
             // std::cout << "=====" << std::endl;
@@ -978,7 +1062,7 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
             tracking_img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", tracking_img).toImageMsg();
 
             // publish marker array
-            visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 0.75}, {0.0, 1.0, 0.0, 0.75});
+            visualization_msgs::MarkerArray results = MatrixXf2MarkerArray(Y, "camera_color_optical_frame", "node_results", {1.0, 150.0/255.0, 0.0, 1.0}, {0.0, 1.0, 0.0, 1.0}, 0.01, 0.005, visible_nodes, {1.0, 0.0, 0.0, 1.0}, {1.0, 0.0, 0.0, 1.0});
             results_pub.publish(results);
 
             double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time_cb).count();
@@ -986,15 +1070,15 @@ sensor_msgs::ImagePtr Callback(const sensor_msgs::ImageConstPtr& image_msg, cons
 
             // change frame id
             out.gurobi_output->header.frame_id = frame_id;
-            out.original_cloud.header.frame_id = frame_id;
-            out.masked_point_cloud.header.frame_id = frame_id;
-            out.downsampled_cloud.header.frame_id = frame_id;
+            out.original_cloud->header.frame_id = frame_id;
+            out.masked_point_cloud->header.frame_id = frame_id;
+            out.downsampled_cloud->header.frame_id = frame_id;
             out.cpd_predict->header.frame_id = frame_id;
 
             auto time = depth_msg->header.stamp;
-            pcl_conversions::toPCL(time, out.original_cloud.header.stamp);
-            pcl_conversions::toPCL(time, out.masked_point_cloud.header.stamp);
-            pcl_conversions::toPCL(time, out.downsampled_cloud.header.stamp);
+            pcl_conversions::toPCL(time, out.original_cloud->header.stamp);
+            pcl_conversions::toPCL(time, out.masked_point_cloud->header.stamp);
+            pcl_conversions::toPCL(time, out.downsampled_cloud->header.stamp);
             pcl_conversions::toPCL(time, out.gurobi_output->header.stamp);
             // pcl_conversions::toPCL(time, template_cloud_init->header.stamp);
             pcl_conversions::toPCL(time, out.cpd_predict->header.stamp);
@@ -1054,6 +1138,7 @@ int main(int argc, char **argv) {
     nh.getParam("/cdcpd2/hsv_threshold_upper_limit", hsv_threshold_upper_limit);
     nh.getParam("/cdcpd2/hsv_threshold_lower_limit", hsv_threshold_lower_limit);
     nh.getParam("/cdcpd2/visibility_threshold", visibility_threshold);
+    nh.getParam("/cdcpd2/dlo_pixel_width", dlo_pixel_width);
 
     // update color thresholding upper bound
     std::string rgb_val = "";

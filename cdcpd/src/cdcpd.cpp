@@ -14,7 +14,6 @@
 #include <pcl/filters/crop_box.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/filters/voxel_grid.h>
-#include <pcl_conversions/pcl_conversions.h>
 
 #include <smmap_utilities/ros_communication_helpers.h>
 #include <sdf_tools/collision_map.hpp>
@@ -517,9 +516,6 @@ VectorXf CDCPD::visibility_prior(const Matrix3Xf& vertices,
     // ENHANCE: replace P_eigen.leftCols(3) with intrinsics
     Matrix3Xf image_space_vertices = intrinsics * vertices;
 
-    double time_diff;
-    std::chrono::steady_clock::time_point cur_time;
-
     // Homogeneous coords: divide by third row
     // the for-loop is unnecessary
     image_space_vertices.row(0).array() /= image_space_vertices.row(2).array();
@@ -561,20 +557,9 @@ VectorXf CDCPD::visibility_prior(const Matrix3Xf& vertices,
     depth_diffs = depth_diffs.array().max(0);
 
     Eigen::VectorXf depth_factor = depth_diffs.array().max(0.0);
-
-    int maskSize = 5;
-
-    // log time
-    cur_time = std::chrono::steady_clock::now();
-
     cv::Mat dist_img(depth.rows, depth.cols, CV_32F); // TODO haven't really tested this but seems right
-    std::cout << "dest size: " << depth.rows << "; " << depth.cols << std::endl;
-    // cv::distanceTransform(~mask, dist_img, cv::noArray(), cv::DIST_L2, maskSize);
-    cv::distanceTransform((255-mask), dist_img, cv::noArray(), cv::DIST_L2, 5);
-
-    time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
-    ROS_INFO_STREAM("Distance transform only: " + std::to_string(time_diff) + " ms");
-
+    int maskSize = 5;
+    cv::distanceTransform(~mask, dist_img, cv::noArray(), cv::DIST_L2, maskSize);
     // ???: why cv::normalize is needed
     cv::normalize(dist_img, dist_img, 0.0, 1.0, cv::NORM_MINMAX);
 
@@ -776,11 +761,11 @@ static float smooth_free_space_cost(const Matrix3Xf vertices,
 // https://github.com/ros-perception/image_pipeline/blob/melodic/depth_image_proc/src/nodelets/point_cloud_xyzrgb.cpp
 // Note that we expect that cx, cy, fx, fy are in the appropriate places in P
 #ifdef ENTIRE
-static std::tuple<pcl::PointCloud<pcl::PointXYZRGB>, pcl::PointCloud<pcl::PointXYZRGB>>
+static std::tuple<PointCloudRGB::Ptr, PointCloud::Ptr>
 #else
 static std::tuple<PointCloud::Ptr>
 #endif
-point_clouds_from_images(const sensor_msgs::PointCloud2ConstPtr& pc_msg,
+point_clouds_from_images(const cv::Mat& depth_image,
                          const cv::Mat& rgb_image,
                          const cv::Mat& mask,
                          const Eigen::Matrix3f& intrinsics,
@@ -788,49 +773,143 @@ point_clouds_from_images(const sensor_msgs::PointCloud2ConstPtr& pc_msg,
                          const Eigen::Vector3f& upper_bounding_box,
 						 const bool is_sim)
 {
-    // our code:
-    sensor_msgs::PointCloud2 output;
-    pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
-    pcl_conversions::toPCL(*pc_msg, *cloud);
+    // depth_image: CV_16U depth image
+    // rgb_image: CV_8U3C rgb image
+    // mask: CV_8U mask for segmentation
+    // intrinsic matrix of Kinect using the Pinhole camera model
+    //  [[fx 0  px];
+    //   [0  fy py];
+    //   [0  0  1 ]]
+    // lower_bounding_box_vec: bounding for mask
+    // upper_bounding_box_vec: bounding for mask
+	
+	// class T;
+	float pixel_len;
+	cv::Mat local_depth_image;
+    if (is_sim) {
+    	// using T = float;
+		local_depth_image = depth_image.clone();
+    	pixel_len = 0.0000222222;
+    } else {
+    	// using T = uint16_t;
+		depth_image.convertTo(local_depth_image, CV_32F);
+    	pixel_len = 0.0002645833;
+    }
+    // using DepthTraits = cdcpd::DepthTraits<T>;
+	
+    // Use correct principal point from calibration
 
-    pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz;
+    // ----- commented -----
+    // auto const center_x = intrinsics(0, 2);
+    // auto const center_y = intrinsics(1, 2);
+    // ----- commented -----
 
-    if (cloud->width != 0 && cloud->height != 0) {
-        // convert to xyz point
-        pcl::PointCloud<pcl::PointXYZRGB> cloud_xyz;
-        pcl::fromPCLPointCloud2(*cloud, cloud_xyz);
-        // now create objects for cur_pc
-        pcl::PCLPointCloud2* cur_pc = new pcl::PCLPointCloud2;
-        pcl::PointCloud<pcl::PointXYZRGB> cur_pc_xyz;
-        pcl::PointCloud<pcl::PointXYZRGB> cur_nodes_xyz;
+    auto const unit_scaling = 0.001;
 
-        // filter point cloud from mask
-        for (int i = 0; i < cloud->height; i ++) {
-            for (int j = 0; j < cloud->width; j ++) {
-                if (mask.at<uchar>(i, j) != 0) {
-                    cur_pc_xyz.push_back(cloud_xyz(j, i));   // note: this is (j, i) not (i, j)
+    // ----- commented -----
+    // auto const constant_x = 1.0f / (intrinsics(0, 0) * pixel_len);
+    // auto const constant_y = 1.0f / (intrinsics(1, 1) * pixel_len);
+    // ----- commented -----
+
+    auto constexpr bad_point = std::numeric_limits<float>::quiet_NaN();
+
+    // ENHANCE: change the way to get access to depth image and rgb image to be more readable
+    // from "depth_row += row_step" to ".at<>()"
+    /*
+    const uint16_t* depth_row = reinterpret_cast<const uint16_t*>(&depth_image.data[0]);
+    int row_step = depth_image.step / sizeof(uint16_t); // related with accessing data in cv::Mat
+    const uint8_t* rgb = &rgb_image.data[0];
+    int rgb_step = 3; // TODO check on this
+    int rgb_skip = rgb_image.step - rgb_image.cols * rgb_step;
+    */
+
+    PointCloud::Ptr filtered_cloud(new PointCloud);
+    #ifdef ENTIRE
+    PointCloudRGB::Ptr unfiltered_cloud(new PointCloudRGB(depth_image.cols, depth_image.rows));
+    auto unfiltered_iter = unfiltered_cloud->begin();
+    #endif
+
+    int counter = 0;
+
+    for (int v = 0; v < depth_image.rows; ++v)
+    {
+        for (int u = 0; u < depth_image.cols; ++u)
+        {
+            float depth = local_depth_image.at<float>(v, u);
+            counter ++;
+
+            // Assume depth = 0 is the standard was to note invalid
+            if (std::isfinite(depth))
+            {
+                // realsense projection matrix
+                // proj_matrix = np.array([[918.359130859375,              0.0, 645.8908081054688, 0.0], \
+                //                         [             0.0, 916.265869140625,   354.02392578125, 0.0], \
+                //                         [             0.0,              0.0,               1.0, 0.0]])
+                // ---- u ----
+                // |
+                // v
+                // |
+
+                // ----- changed to -----
+                float center_x = 645.890;
+                float center_y = 354.023;
+                float fx = 918.359;
+                float fy = 916.265;
+
+                float z = float(depth) * unit_scaling;
+
+                float x = (float(u) - center_x) / fx * z;
+                float y = (float(v) - center_y) / fy * z;
+                // ----- changed to -----
+                
+                // ----- commented -----
+                // float x = (float(u) - center_x) * pixel_len * float(depth) * unit_scaling * constant_x;
+                // float y = (float(v) - center_y) * pixel_len * float(depth) * unit_scaling * constant_y;
+                // ----- commented -----
+
+                // Add to unfiltered cloud
+                // ENHANCE: be more concise
+                #ifdef ENTIRE
+                if (fmod(counter, 100) == 0) {
+                    unfiltered_iter->x = x;
+                    unfiltered_iter->y = y;
+                    unfiltered_iter->z = z;
+                    unfiltered_iter->r = rgb_image.at<Vec3b>(v, u)[0];
+                    unfiltered_iter->g = rgb_image.at<Vec3b>(v, u)[1];
+                    unfiltered_iter->b = rgb_image.at<Vec3b>(v, u)[2];
                 }
+                #endif
+
+                Eigen::Array<float, 3, 1> point(x, y, z);
+                // if (mask.at<bool>(v, u) &&
+                //     point.min(upper_bounding_box.array()).isApprox(point) &&
+                //     point.max(lower_bounding_box.array()).isApprox(point))
+                // {
+                //     filtered_cloud->push_back(pcl::PointXYZ(x, y, z));
+                // }
+
+                if (mask.at<bool>(v, u) && depth > 0.4)
+                {
+                    filtered_cloud->push_back(pcl::PointXYZ(x, y, z));
+                }
+
+                // filtered_cloud->push_back(pcl::PointXYZ(x, y, z));
             }
+            #ifdef ENTIRE
+            else
+            {
+                unfiltered_iter->x = unfiltered_iter->y = unfiltered_iter->z = bad_point;
+            }
+            ++unfiltered_iter;
+            #endif
         }
-
-        // convert back to pointcloud2 message
-        pcl::toPCLPointCloud2(cur_pc_xyz, *cur_pc);
-        // Perform downsampling
-        pcl::PCLPointCloud2ConstPtr cloudPtr(cur_pc);
-        pcl::PCLPointCloud2 cur_pc_downsampled;
-        pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
-        sor.setInputCloud (cloudPtr);
-        sor.setLeafSize (0.005, 0.005, 0.005);
-        sor.filter (cur_pc_downsampled);
-
-        pcl::fromPCLPointCloud2(cur_pc_downsampled, downsampled_xyz);
-        // MatrixXf X = downsampled_xyz.getMatrixXfMap().topRows(3).transpose();
     }
 
     #ifdef ENTIRE
-    return { downsampled_xyz, downsampled_xyz };
+    assert(unfiltered_iter == unfiltered_cloud->end());
+    return { unfiltered_cloud, filtered_cloud };
     #else
-    return { downsampled_xyz };
+    return { filtered_cloud };
     #endif
 }
 
@@ -1499,7 +1578,6 @@ Matrix3Xd CDCPD::predict(const Matrix3Xd& P,
 CDCPD::Output CDCPD::operator()(
         const Mat& rgb,
         const Mat& depth,
-        const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
         const Mat& mask,
         const cv::Matx33d& intrinsics,
         const PointCloud::Ptr template_cloud,
@@ -1511,8 +1589,6 @@ CDCPD::Output CDCPD::operator()(
 		const int pred_choice,
         const std::vector<CDCPD::FixedPoint>& fixed_points)
 {
-    std::cout << "kvis = " << kvis << std::endl;
-
     // rgb: CV_8U3C rgb image
     // depth: CV_16U depth image
     // mask: CV_8U mask for segmentation
@@ -1552,25 +1628,23 @@ CDCPD::Output CDCPD::operator()(
 
     // entire_cloud: pointer to the entire point cloud
     // cloud: pointer to the point clouds selected
-    // #ifdef ENTIRE
-    // auto [entire_cloud, cloud]
-    // #else
-    // auto [cloud]
-    // #endif
-    //     = point_clouds_from_images(
-    //             pc_msg,
-    //             rgb,
-    //             mask,
-    //             intrinsics_eigen,
-    //             last_lower_bounding_box - bounding_box_extend,
-    //             last_upper_bounding_box + bounding_box_extend,
-	// 			is_sim);
-    pcl::PointCloud<pcl::PointXYZRGB> cloud;
-    pcl::PointCloud<pcl::PointXYZRGB> entire_cloud;
-    pcl::copyPointCloud(downsampled_xyz, cloud);
-    pcl::copyPointCloud(downsampled_xyz, entire_cloud);
-    std::cout << "Points in filtered: (" << cloud.height << " x " << cloud.width << ")\n";
+    #ifdef ENTIRE
+    auto [entire_cloud, cloud]
+    #else
+    auto [cloud]
+    #endif
+        = point_clouds_from_images(
+                depth,
+                rgb,
+                mask,
+                intrinsics_eigen,
+                last_lower_bounding_box - bounding_box_extend,
+                last_upper_bounding_box + bounding_box_extend,
+				is_sim);
+    std::cout << "Points in filtered: (" << cloud->height << " x " << cloud->width << ")\n";
 
+    /// VoxelGrid filter downsampling
+    PointCloud::Ptr cloud_downsampled(new PointCloud);
     const Matrix3Xf Y = template_cloud->getMatrixXfMap().topRows(3);
     double sigma2 = 0.002;
     // TODO: check whether the change is needed here for unit conversion
@@ -1579,19 +1653,17 @@ CDCPD::Output CDCPD::operator()(
     // std::cout << Y_emit_prior << std::endl << std::endl;
     // sample_X_points(Y, Y_emit_prior, sigma2, cloud);
 
-    // /// VoxelGrid filter downsampling
-    // PointCloud::Ptr cloud_downsampled(new PointCloud);
-    // pcl::VoxelGrid<pcl::PointXYZ> sor;
-    // std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
-    // sor.setInputCloud(cloud);
-    // sor.setLeafSize(0.012f, 0.012f, 0.012f);
-    // sor.filter(*cloud_downsampled);
-    // std::cout << "Number of points in downsampled point cloud: " << cloud_downsampled->width << std::endl;
-    Matrix3Xf X = cloud.getMatrixXfMap().topRows(3);  // MatrixXf X = downsampled_xyz.getMatrixXfMap().topRows(3).transpose();
+    pcl::VoxelGrid<pcl::PointXYZ> sor;
+    std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
+    sor.setInputCloud(cloud);
+    sor.setLeafSize(0.012f, 0.012f, 0.012f);
+    sor.filter(*cloud_downsampled);
+    std::cout << "Points in fully filtered: " << cloud_downsampled->width << std::endl;
+    Matrix3Xf X = cloud_downsampled->getMatrixXfMap().topRows(3);
     // Add points to X according to the previous template
 
     #ifdef ENTIRE
-    const Matrix3Xf& entire = entire_cloud.getMatrixXfMap().topRows(3);
+    const Matrix3Xf& entire = entire_cloud->getMatrixXfMap().topRows(3);
     #endif
 
     // NOTE: order of P cannot influence delta_P, but influence P+delta_P
@@ -1599,18 +1671,19 @@ CDCPD::Output CDCPD::operator()(
     std::vector<FixedPoint> pred_fixed_points;
 	cout << "gripper_idx" << endl;
 	cout << gripper_idx << endl << endl;
-    for (int col = 0; col < gripper_idx.cols(); ++col)
-    {
-        FixedPoint pt;
-		pt.template_index = gripper_idx(0, col);
-        pt.position(0) = q_config[col](0, 3);
-        pt.position(1) = q_config[col](1, 3);
-        pt.position(2) = q_config[col](2, 3);
-        pred_fixed_points.push_back(pt);
-    }
+    // for (int col = 0; col < gripper_idx.cols(); ++col)
+    // {
+    //     FixedPoint pt;
+	// 	pt.template_index = gripper_idx(0, col);
+    //     pt.position(0) = q_config[col](0, 3);
+    //     pt.position(1) = q_config[col](1, 3);
+    //     pt.position(2) = q_config[col](2, 3);
+    //     pred_fixed_points.push_back(pt);
+    // }
 
     // log time
     std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+    double time_diff;
 
     Matrix3Xf TY, TY_pred;
     if (is_prediction) {
@@ -1660,7 +1733,7 @@ CDCPD::Output CDCPD::operator()(
 	Matrix3Xf Y_opt = opt(TY, template_edges, pred_fixed_points, self_intersection, interation_constrain);
 	// end = std::chrono::system_clock::now(); std::cout << "opt: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
 
-    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
     ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
 
     // Set the min and max for the box filter for next time
@@ -1676,7 +1749,7 @@ CDCPD::Output CDCPD::operator()(
         entire_cloud,
         #endif
         cloud,
-        cloud,
+        cloud_downsampled,
         cdcpd_cpd,
         cdcpd_pred,
         cdcpd_out
@@ -1686,7 +1759,6 @@ CDCPD::Output CDCPD::operator()(
 CDCPD::Output CDCPD::operator()(
         const Mat& rgb,
         const Mat& depth,
-        const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
         const Mat& mask,
         const cv::Matx33d& intrinsics,
         const PointCloud::Ptr template_cloud,
@@ -1709,8 +1781,6 @@ CDCPD::Output CDCPD::operator()(
     // template_cloud: point clouds corresponding to Y^t (Y in IV.A) in the paper
     // template_edges: (2, K) matrix corresponding to E in the paper
     // fixed_points: fixed points during the tracking
-
-    std::cout << "kvis = " << kvis << std::endl;
 
     assert(rgb.type() == CV_8UC3);
     if (is_sim) {
@@ -1745,25 +1815,23 @@ CDCPD::Output CDCPD::operator()(
 
     // entire_cloud: pointer to the entire point cloud
     // cloud: pointer to the point clouds selected
-    // #ifdef ENTIRE
-    // auto [entire_cloud, cloud]
-    // #else
-    // auto [cloud]
-    // #endif
-    //     = point_clouds_from_images(
-    //             pc_msg,
-    //             rgb,
-    //             mask,
-    //             intrinsics_eigen,
-    //             last_lower_bounding_box - bounding_box_extend,
-    //             last_upper_bounding_box + bounding_box_extend,
-	// 			is_sim);
-    pcl::PointCloud<pcl::PointXYZRGB> cloud;
-    pcl::PointCloud<pcl::PointXYZRGB> entire_cloud;
-    pcl::copyPointCloud(downsampled_xyz, cloud);
-    pcl::copyPointCloud(downsampled_xyz, entire_cloud);
-    std::cout << "Points in filtered: (" << cloud.height << " x " << cloud.width << ")\n";
+    #ifdef ENTIRE
+    auto [entire_cloud, cloud]
+    #else
+    auto [cloud]
+    #endif
+        = point_clouds_from_images(
+                depth,
+                rgb,
+                mask,
+                intrinsics_eigen,
+                last_lower_bounding_box - bounding_box_extend,
+                last_upper_bounding_box + bounding_box_extend,
+				is_sim);
+    std::cout << "Points in filtered: (" << cloud->height << " x " << cloud->width << ")\n";
 
+    /// VoxelGrid filter downsampling
+    PointCloud::Ptr cloud_downsampled(new PointCloud);
     const Matrix3Xf Y = template_cloud->getMatrixXfMap().topRows(3);
     double sigma2 = 0.002;
     // TODO: check whether the change is needed here for unit conversion
@@ -1772,19 +1840,17 @@ CDCPD::Output CDCPD::operator()(
     // std::cout << Y_emit_prior << std::endl << std::endl;
     // sample_X_points(Y, Y_emit_prior, sigma2, cloud);
 
-    // // VoxelGrid filter downsampling
-    // PointCloud::Ptr cloud_downsampled(new PointCloud);
-    // pcl::VoxelGrid<pcl::PointXYZ> sor;
-    // std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
-    // sor.setInputCloud(cloud);
-    // sor.setLeafSize(0.012f, 0.012f, 0.012f);
-    // sor.filter(*cloud_downsampled);
-    // std::cout << "Number of points in downsampled point cloud: " << cloud_downsampled->width << std::endl;
-    Matrix3Xf X = cloud.getMatrixXfMap().topRows(3);
+    pcl::VoxelGrid<pcl::PointXYZ> sor;
+    std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
+    sor.setInputCloud(cloud);
+    sor.setLeafSize(0.012f, 0.012f, 0.012f);
+    sor.filter(*cloud_downsampled);
+    std::cout << "Points in fully filtered: " << cloud_downsampled->width << std::endl;
+    Matrix3Xf X = cloud_downsampled->getMatrixXfMap().topRows(3);
     // Add points to X according to the previous template
 
     #ifdef ENTIRE
-    const Matrix3Xf& entire = entire_cloud.getMatrixXfMap().topRows(3);
+    const Matrix3Xf& entire = entire_cloud->getMatrixXfMap().topRows(3);
     #endif
 
 	AllGrippersSinglePoseDelta q_dot_valid;
@@ -1874,23 +1940,24 @@ CDCPD::Output CDCPD::operator()(
     // NOTE: order of P cannot influence delta_P, but influence P+delta_P
     // std::chrono::time_point<std::chrono::system_clock> start, end;
     std::vector<FixedPoint> pred_fixed_points;
-	cout << "gripper_idx" << endl;
-	cout << gripper_idx << endl << endl;
-	if (model != NULL) {
-   		for (int col = 0; col < gripper_idx.cols(); ++col)
-    	{
-        	FixedPoint pt;
-			pt.template_index = gripper_idx(0, col);
-        	pt.position(0) = q_config_valid[col](0, 3);
-        	pt.position(1) = q_config_valid[col](1, 3);
-        	pt.position(2) = q_config_valid[col](2, 3);
-        	pred_fixed_points.push_back(pt);
-			cout << q_config_valid[col].matrix().block<3,1>(0,3) << endl;
-    	}
-	}
-    
+	// cout << "gripper_idx" << endl;
+	// cout << gripper_idx << endl << endl;
+	// if (model != NULL) {
+   	// 	for (int col = 0; col < gripper_idx.cols(); ++col)
+    // 	{
+    //     	FixedPoint pt;
+	// 		pt.template_index = gripper_idx(0, col);
+    //     	pt.position(0) = q_config_valid[col](0, 3);
+    //     	pt.position(1) = q_config_valid[col](1, 3);
+    //     	pt.position(2) = q_config_valid[col](2, 3);
+    //     	pred_fixed_points.push_back(pt);
+	// 		cout << q_config_valid[col].matrix().block<3,1>(0,3) << endl;
+    // 	}
+	// }
+
     // log time
     std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+    double time_diff;
 
     Matrix3Xf TY, TY_pred;
     if (is_prediction) {
@@ -1945,7 +2012,7 @@ CDCPD::Output CDCPD::operator()(
     Matrix3Xf Y_opt = opt(TY, template_edges, pred_fixed_points, self_intersection, interation_constrain);
     // end = std::chrono::system_clock::now(); std::cout << "opt: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
 
-    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
     ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
 
     // Set the min and max for the box filter for next time
@@ -1961,7 +2028,7 @@ CDCPD::Output CDCPD::operator()(
         entire_cloud,
         #endif
         cloud,
-        cloud,
+        cloud_downsampled,
         cdcpd_cpd,
         cdcpd_pred,
         cdcpd_out
@@ -1971,7 +2038,6 @@ CDCPD::Output CDCPD::operator()(
 CDCPD::Output CDCPD::operator()(
         const Mat& rgb,
         const Mat& depth,
-        const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
         const Mat& mask,
         const cv::Matx33d& intrinsics,
         const PointCloud::Ptr template_cloud,
@@ -1987,8 +2053,6 @@ CDCPD::Output CDCPD::operator()(
     // template_cloud: point clouds corresponding to Y^t (Y in IV.A) in the paper
     // template_edges: (2, K) matrix corresponding to E in the paper
     // fixed_points: fixed points during the tracking
-
-    std::cout << "kvis = " << kvis << std::endl;
 
     assert(rgb.type() == CV_8UC3);
     if (is_sim) {
@@ -2019,25 +2083,23 @@ CDCPD::Output CDCPD::operator()(
 
     // entire_cloud: pointer to the entire point cloud
     // cloud: pointer to the point clouds selected
-    // #ifdef ENTIRE
-    // auto [entire_cloud, cloud]
-    // #else
-    // auto [cloud]
-    // #endif
-    //     = point_clouds_from_images(
-    //             pc_msg,
-    //             rgb,
-    //             mask,
-    //             intrinsics_eigen,
-    //             last_lower_bounding_box - bounding_box_extend,
-    //             last_upper_bounding_box + bounding_box_extend,
-	// 			is_sim);
-    pcl::PointCloud<pcl::PointXYZRGB> cloud;
-    pcl::PointCloud<pcl::PointXYZRGB> entire_cloud;
-    pcl::copyPointCloud(downsampled_xyz, cloud);
-    pcl::copyPointCloud(downsampled_xyz, entire_cloud);
-    std::cout << "Points in filtered: (" << cloud.height << " x " << cloud.width << ")\n";
+    #ifdef ENTIRE
+    auto [entire_cloud, cloud]
+    #else
+    auto [cloud]
+    #endif
+        = point_clouds_from_images(
+                depth,
+                rgb,
+                mask,
+                intrinsics_eigen,
+                last_lower_bounding_box - bounding_box_extend,
+                last_upper_bounding_box + bounding_box_extend,
+				is_sim);
+    std::cout << "Points in filtered: (" << cloud->height << " x " << cloud->width << ")\n";
 
+    /// VoxelGrid filter downsampling
+    PointCloud::Ptr cloud_downsampled(new PointCloud);
     const Matrix3Xf Y = template_cloud->getMatrixXfMap().topRows(3);
     double sigma2 = 0.002;
     // TODO: check whether the change is needed here for unit conversion
@@ -2046,23 +2108,22 @@ CDCPD::Output CDCPD::operator()(
     // std::cout << Y_emit_prior << std::endl << std::endl;
     // sample_X_points(Y, Y_emit_prior, sigma2, cloud);
 
-    // // VoxelGrid filter downsampling
-    // PointCloud::Ptr cloud_downsampled(new PointCloud);
-    // pcl::VoxelGrid<pcl::PointXYZ> sor;
-    // std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
-    // sor.setInputCloud(cloud);
-    // sor.setLeafSize(0.012f, 0.012f, 0.012f);
-    // sor.filter(*cloud_downsampled);
-    // std::cout << "Number of points in downsampled point cloud: " << cloud_downsampled->width << std::endl;
-    Matrix3Xf X = cloud.getMatrixXfMap().topRows(3);
+    pcl::VoxelGrid<pcl::PointXYZ> sor;
+    std::cout << "Points in cloud before leaf: " << cloud->width << std::endl;
+    sor.setInputCloud(cloud);
+    sor.setLeafSize(0.012f, 0.012f, 0.012f);
+    sor.filter(*cloud_downsampled);
+    std::cout << "Points in fully filtered: " << cloud_downsampled->width << std::endl;
+    Matrix3Xf X = cloud_downsampled->getMatrixXfMap().topRows(3);
     // Add points to X according to the previous template
 
     #ifdef ENTIRE
-    const Matrix3Xf& entire = entire_cloud.getMatrixXfMap().topRows(3);
+    const Matrix3Xf& entire = entire_cloud->getMatrixXfMap().topRows(3);
     #endif
 
     // log time
     std::chrono::steady_clock::time_point cur_time = std::chrono::steady_clock::now();
+    double time_diff;
 
     Matrix3Xf TY, TY_pred;
     if (is_prediction) {
@@ -2111,7 +2172,7 @@ CDCPD::Output CDCPD::operator()(
     Matrix3Xf Y_opt = opt(TY, template_edges, fixed_points, self_intersection, interation_constrain);
     // end = std::chrono::system_clock::now(); std::cout << "opt: " <<  std::chrono::duration<double>(end - start).count() << std::endl;
 
-    double time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
+    time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cur_time).count();
     ROS_WARN_STREAM("Tracking step time difference: " + std::to_string(time_diff) + " ms");
 
     // Set the min and max for the box filter for next time
@@ -2127,7 +2188,7 @@ CDCPD::Output CDCPD::operator()(
         entire_cloud,
         #endif
         cloud,
-        cloud,
+        cloud_downsampled,
         cdcpd_cpd,
         cdcpd_pred,
         cdcpd_out

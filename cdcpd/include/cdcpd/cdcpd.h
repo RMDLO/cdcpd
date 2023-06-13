@@ -16,7 +16,7 @@
 #include "cdcpd/obs_util.h"
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Surface_mesh.h>
-#include <CGAL/draw_surface_mesh.h>
+// #include <CGAL/draw_surface_mesh.h>
 #include <CGAL/convex_hull_3.h>
 #include <CGAL/subdivision_method_3.h>
 
@@ -87,10 +87,10 @@ class CDCPD {
 public:
     struct Output {
         #ifdef ENTIRE
-        pcl::PointCloud<pcl::PointXYZRGB> original_cloud;
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr original_cloud;
         #endif
-        pcl::PointCloud<pcl::PointXYZRGB> masked_point_cloud;
-        pcl::PointCloud<pcl::PointXYZRGB> downsampled_cloud;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr masked_point_cloud;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled_cloud;
         pcl::PointCloud<pcl::PointXYZ>::Ptr cpd_output;
         pcl::PointCloud<pcl::PointXYZ>::Ptr cpd_predict;
         pcl::PointCloud<pcl::PointXYZ>::Ptr gurobi_output;
@@ -137,8 +137,7 @@ public:
 		  const bool is_sim = false);
 
     Output operator()(const cv::Mat& rgb, // RGB image
-                      const cv::Mat& depth,
-                      const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
+                      const cv::Mat& depth, // Depth image
                       const cv::Mat& mask,
                       const cv::Matx33d& intrinsics,
                       const pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud,
@@ -152,8 +151,7 @@ public:
 
 
     Output operator()(const cv::Mat& rgb, // RGB image
-                      const cv::Mat& depth,
-                      const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
+                      const cv::Mat& depth, // Depth image
                       const cv::Mat& mask,
                       const cv::Matx33d& intrinsics,
                       const pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud,
@@ -171,8 +169,7 @@ public:
                       const std::vector<FixedPoint>& fixed_points = {});
     
 	Output operator()(const cv::Mat& rgb, // RGB image
-                      const cv::Mat& depth,
-                      const pcl::PointCloud<pcl::PointXYZRGB> downsampled_xyz,
+                      const cv::Mat& depth, // Depth image
                       const cv::Mat& mask,
                       const cv::Matx33d& intrinsics,
                       const pcl::PointCloud<pcl::PointXYZ>::Ptr template_cloud,
@@ -182,7 +179,6 @@ public:
 					  const int pred_choice = 0,
                       const std::vector<FixedPoint>& fixed_points = {});
 
-    float kvis;
 
 private:
     Eigen::VectorXf visibility_prior(const Eigen::Matrix3Xf& vertices,
@@ -257,6 +253,7 @@ private:
     double annealing_factor;
     double k;
     int max_iterations;
+    float kvis;
 	float zeta;
     bool use_recovery;
     // std::vector<Eigen::MatrixXf> Q;
@@ -275,4 +272,3 @@ private:
 };
 
 #endif
-
